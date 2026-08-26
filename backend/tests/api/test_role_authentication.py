@@ -158,3 +158,4 @@ def test_admin_and_employee_registration_and_password_reset(client):
     })
     assert login_new_pw.status_code == 200
     assert login_new_pw.json()["user"]["username"] == "kyle_reese"
+

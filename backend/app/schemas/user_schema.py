@@ -93,3 +93,4 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     user: UserOut
     company: Optional[dict] = None
+

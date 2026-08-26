@@ -58,17 +58,17 @@ export const EmployeeRegisterPage: React.FC = () => {
     if (!formData.username.trim()) {
       errs.username = 'Username is required.';
     } else if (!/^[a-zA-Z0-9_.-]{3,30}$/.test(formData.username.trim())) {
-      errs.username = 'Username must be 3-30 characters (letters, numbers, underscores).';
+      errs.username = 'Username must be 3-30 chars (letters, numbers, _, -, .).';
     }
 
     if (!formData.password) {
       errs.password = 'Password is required.';
     } else if (formData.password.length < 6) {
-      errs.password = 'Password must be at least 6 characters long.';
+      errs.password = 'Password must be at least 6 characters.';
     }
 
     if (!formData.confirm_password) {
-      errs.confirm_password = 'Please confirm your password.';
+      errs.confirm_password = 'Confirm password is required.';
     } else if (formData.password !== formData.confirm_password) {
       errs.confirm_password = 'Passwords do not match.';
     }
