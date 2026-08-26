@@ -1,0 +1,39 @@
+# Node dependencies & builds
+node_modules/
+dist/
+build/
+.next/
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.db
+*.sqlite3
+test_datalyze.db
+datalyze.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Testing & Logs
+.pytest_cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

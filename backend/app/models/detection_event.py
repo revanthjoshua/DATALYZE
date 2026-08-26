@@ -1,3 +1,4 @@
+from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, Float, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship

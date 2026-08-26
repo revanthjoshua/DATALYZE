@@ -2,6 +2,27 @@ import pytest
 
 
 def test_admin_and_employee_role_authentication_separation(client):
+    # Setup: Explicitly register test Admin and Employee accounts
+    client.post("/api/v1/auth/register-admin", json={
+        "full_name": "Admin Leader",
+        "phone_number": "+15550100",
+        "email": "admin@datalyze.com",
+        "username": "admin",
+        "password": "Admin123!",
+        "confirm_password": "Admin123!",
+        "company_name": "Acme Global Workspace",
+        "industry": "Retail/E-commerce"
+    })
+
+    client.post("/api/v1/auth/register-employee", json={
+        "full_name": "Jordan Reed",
+        "phone_number": "+15550199",
+        "email": "employee@datalyze.com",
+        "username": "employee",
+        "password": "Employee123!",
+        "confirm_password": "Employee123!"
+    })
+
     # 1. Test Admin Login with Email
     admin_res = client.post("/api/v1/auth/login", json={
         "email": "admin@datalyze.com",

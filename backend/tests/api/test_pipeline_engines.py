@@ -60,3 +60,14 @@ def test_detection_prediction_recommendation_and_noah_pipeline(client):
     })
     assert noah_why_res.status_code == 200
     assert len(noah_why_res.json()["answer"]) > 10
+
+    # 8. Verify MVP Phase 403 Gating for Agentic Reasoning Route
+    agentic_res = client.post("/api/v1/noah/agentic-reasoning", headers=headers, json={
+        "goal": "Autonomous multi-step investigation"
+    })
+    assert agentic_res.status_code == 403
+    assert "reserved for Phase 5 enterprise rollout" in agentic_res.json()["detail"]
+
+    # 9. Verify 401 for unauthenticated protected API calls
+    unauth_res = client.get("/api/v1/kpis")
+    assert unauth_res.status_code == 401

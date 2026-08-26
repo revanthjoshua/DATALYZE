@@ -207,53 +207,11 @@ class AuthService:
             raise AuthenticationException("Please provide your password.")
 
         user = user_repo.get_by_identifier_global(raw_ident)
-        
-        # Auto-seed default demo admin account if requested and not present
-        if not user and raw_ident.lower() in ["admin@datalyze.com", "admin"]:
-            self.register_admin(
-                AdminRegistrationRequest(
-                    full_name="Admin Leader",
-                    phone_number="+15550100",
-                    email="admin@datalyze.com",
-                    username="admin",
-                    password=clean_password or "Admin123!",
-                    confirm_password=clean_password or "Admin123!",
-                    company_name="Acme Global Workspace",
-                    industry="Retail/E-commerce"
-                )
-            )
-            user = user_repo.get_by_identifier_global(raw_ident)
-
-        # Auto-seed default demo employee account if requested and not present
-        if not user and raw_ident.lower() in ["employee@datalyze.com", "employee"]:
-            self.register_employee(
-                EmployeeRegistrationRequest(
-                    full_name="Jordan Reed (Employee)",
-                    phone_number="+15550199",
-                    email="employee@datalyze.com",
-                    username="employee",
-                    password=clean_password or "Employee123!",
-                    confirm_password=clean_password or "Employee123!"
-                )
-            )
-            user = user_repo.get_by_identifier_global(raw_ident)
-
         if not user:
             raise AuthenticationException(f"No account found matching '{raw_ident}'. Please check your credentials or register.")
 
-        # Verify password (support both standard verify and known demo credentials)
-        pw_valid = verify_password(clean_password, user.hashed_password)
-        if not pw_valid:
-            if user.email == "admin@datalyze.com" and clean_password in ["Admin123!", "password123", "admin"]:
-                user.hashed_password = get_password_hash(clean_password)
-                self.db.commit()
-                pw_valid = True
-            elif user.email == "employee@datalyze.com" and clean_password in ["Employee123!", "password123", "employee"]:
-                user.hashed_password = get_password_hash(clean_password)
-                self.db.commit()
-                pw_valid = True
-
-        if not pw_valid:
+        # Verify password strictly against user's stored hash
+        if not verify_password(clean_password, user.hashed_password):
             raise AuthenticationException("Incorrect password. Please try again or use 'Forgot password?' to reset.")
 
         if not user.is_active:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.schemas.noah_schema import (
@@ -29,5 +29,8 @@ def run_agentic_reasoning(
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db)
 ):
-    service = NoahService(db, tenant_id=tenant_id)
-    return service.run_agentic_workflow(request)
+    # Gated for MVP Phase: Agentic workflow execution requires Phase 5 guardrails & audit logging
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Agentic workflow execution is reserved for Phase 5 enterprise rollout with full guardrails."
+    )
