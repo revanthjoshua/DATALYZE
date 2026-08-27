@@ -1,5 +1,5 @@
 import axiosClient from './axiosClient';
-import { AuthResponse, User } from '../types/user.types';
+import { AuthResponse, User, InviteVerifyResponse } from '../types/user.types';
 import { Company } from '../types/company.types';
 
 export interface AdminRegistrationPayload {
@@ -40,6 +40,14 @@ export interface ForgotPasswordConfirmPayload {
   new_password: string;
   confirm_password: string;
   portal_type: 'admin' | 'employee';
+}
+
+export interface AcceptInvitePayload {
+  token: string;
+  password: string;
+  confirm_password: string;
+  full_name?: string;
+  phone_number?: string;
 }
 
 export const authApi = {
@@ -104,6 +112,24 @@ export const authApi = {
 
   resetPassword: async (payload: { email: string; new_password: string }): Promise<AuthResponse> => {
     const res = await axiosClient.post<AuthResponse>('/auth/reset-password', payload);
+    return res.data;
+  },
+
+  verifyInvitation: async (token: string): Promise<InviteVerifyResponse> => {
+    const res = await axiosClient.get<InviteVerifyResponse>('/auth/invite/verify', {
+      params: { token },
+    });
+    return res.data;
+  },
+
+  acceptInvitation: async (payload: AcceptInvitePayload): Promise<{
+    success: boolean;
+    message: string;
+    email: string;
+    role: string;
+    company_name: string;
+  }> => {
+    const res = await axiosClient.post('/auth/invite/accept', payload);
     return res.data;
   },
 

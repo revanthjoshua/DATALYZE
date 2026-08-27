@@ -5,10 +5,12 @@ from app.models.user import User
 from app.schemas.company_schema import CompanyUpdate
 from app.core.exceptions import ResourceNotFoundException, PermissionDeniedException, DataValidationException
 from app.core.security import hash_password
+from app.core.logging import log_audit_event
 from app.repositories.company_repository import CompanyRepository
 from app.repositories.user_repository import UserRepository
 from app.industry.industry_config import get_default_kpis_for_industry
 from app.models.kpi_definition import KPIDefinition
+
 
 
 class CompanyService:
@@ -102,3 +104,55 @@ class CompanyService:
             self.db.commit()
             self.db.refresh(company)
         return company
+
+    def remove_team_member(self, user_id: int, current_admin: User) -> User:
+        """
+        Deactivates a team member, revoking immediate access to the workspace and all protected APIs.
+        Safely enforces that a company workspace must never be left without an active Admin.
+        """
+        target_user = self.user_repo.get_by_id(user_id)
+        if not target_user or not target_user.is_active:
+            raise ResourceNotFoundException("Team member")
+
+        # Normalize role
+        target_role = (target_user.role or "").lower().strip()
+        admin_roles = ["company admin", "company_admin", "admin", "platform super admin", "super_admin"]
+        is_target_admin = target_role in admin_roles
+
+        if is_target_admin:
+            # Query all active admins in this tenant
+            active_users = self.db.query(User).filter(
+                User.company_id == self.tenant_id,
+                User.is_active == True
+            ).all()
+            active_admin_ids = [
+                u.id for u in active_users
+                if (u.role or "").lower().strip() in admin_roles
+            ]
+
+            if len(active_admin_ids) <= 1 and target_user.id in active_admin_ids:
+                raise DataValidationException(
+                    "Cannot remove the only remaining Company Admin. Your workspace must have at least one active Admin."
+                )
+
+        # Deactivate user
+        target_user.is_active = False
+        self.db.commit()
+        self.db.refresh(target_user)
+
+        log_audit_event(
+            event="team_member_removed",
+            details={
+                "company_id": self.tenant_id,
+                "removed_user_id": target_user.id,
+                "removed_email": target_user.email,
+                "removed_role": target_user.role,
+                "removed_by_user_id": current_admin.id,
+                "self_removed": (target_user.id == current_admin.id)
+            },
+            level="INFO",
+            status="SUCCESS"
+        )
+
+        return target_user
+

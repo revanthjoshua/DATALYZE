@@ -35,4 +35,5 @@ class UserRepository(BaseRepository[User]):
         return self._tenant_query().filter(User.email == email.lower().strip()).first()
 
     def list_team_members(self) -> List[User]:
-        return self._tenant_query().order_by(User.created_at.asc()).all()
+        return self._tenant_query().filter(User.is_active == True).order_by(User.created_at.asc()).all()
+

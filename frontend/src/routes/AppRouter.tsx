@@ -22,6 +22,8 @@ import { RecommendationsPage } from '../pages/RecommendationsPage';
 import { AlertsPage } from '../pages/AlertsPage';
 import { ReportsPage } from '../pages/ReportsPage';
 import { SmartInventoryPage } from '../pages/SmartInventoryPage';
+import { AcceptInvitePage } from '../pages/AcceptInvitePage';
+
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, token, loading } = useAuth();
@@ -143,7 +145,11 @@ export const AppRouter: React.FC = () => {
           }
         />
 
+        {/* Accept Team Invitation Route */}
+        <Route path="/accept-invite" element={<AcceptInvitePage />} />
+
         {/* Protected App Routes */}
+
         <Route
           element={
             <ProtectedRoute>

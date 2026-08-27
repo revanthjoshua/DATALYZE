@@ -23,3 +23,24 @@ export interface AuthResponse {
     timezone: string;
   };
 }
+
+export interface Invitation {
+  id: number;
+  email: string;
+  full_name?: string;
+  role: string;
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+  created_at: string;
+  expires_at: string;
+  accepted_at?: string;
+  revoked_at?: string;
+}
+
+export interface InviteVerifyResponse {
+  valid: boolean;
+  email: string;
+  full_name?: string;
+  role: string;
+  company_name: string;
+  company_id: number;
+}

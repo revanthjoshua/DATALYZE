@@ -15,11 +15,14 @@ from app.schemas.user_schema import (
     ForgotPasswordConfirm,
 )
 from app.schemas.company_schema import CompanyOut
+from app.schemas.invitation_schema import InviteVerifyOut, AcceptInviteRequest
 from app.services.auth_service import AuthService
+from app.services.invitation_service import InvitationService
 from app.middleware.auth_middleware import get_current_user
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
 
 
 @router.post("/register-admin", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
@@ -104,3 +107,23 @@ def update_current_user_profile(
         "user": UserOut.model_validate(updated_user),
         "company": CompanyOut.model_validate(company) if company else None
     }
+
+
+@router.get("/invite/verify", response_model=InviteVerifyOut)
+def verify_invitation(token: str, db: Session = Depends(get_db)):
+    """
+    Verifies the cryptographic invitation token and returns safe workspace metadata.
+    """
+    service = InvitationService(db)
+    return service.verify_invitation_token(token)
+
+
+@router.post("/invite/accept")
+def accept_invitation(req: AcceptInviteRequest, db: Session = Depends(get_db)):
+    """
+    Accepts the invitation, verifies chosen password, creates the active user,
+    and binds the user to the company workspace and assigned role from the invitation.
+    """
+    service = InvitationService(db)
+    return service.accept_invitation(req)
+

@@ -1,4 +1,5 @@
-from typing import List, Union
+from typing import List, Union, Optional
+
 import logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
@@ -32,6 +33,12 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+
+    # Email Service (Resend) Settings
+    RESEND_API_KEY: Optional[str] = Field(default=None, validation_alias="RESEND_API_KEY")
+    RESEND_FROM_EMAIL: str = Field(default="Datalyze <onboarding@resend.dev>", validation_alias="RESEND_FROM_EMAIL")
+    FRONTEND_URL: str = Field(default="http://localhost:5173", validation_alias="FRONTEND_URL")
+
 
     @field_validator("SECRET_KEY")
     @classmethod

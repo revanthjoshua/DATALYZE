@@ -12,6 +12,7 @@ from app.models.report import Report
 from app.models.inventory_item import InventoryItem
 from app.models.warehouse_location import WarehouseLocation
 from app.models.uploaded_dataset import UploadedDataset
+from app.models.invitation import Invitation
 
 __all__ = [
     "Company",
@@ -28,5 +29,7 @@ __all__ = [
     "InventoryItem",
     "WarehouseLocation",
     "UploadedDataset",
+    "Invitation",
 ]
+
 
