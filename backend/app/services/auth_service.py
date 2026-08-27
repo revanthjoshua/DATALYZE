@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 import random
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.company import Company
@@ -18,10 +19,9 @@ from app.schemas.user_schema import (
 )
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.exceptions import AuthenticationException, DatalyzeException
+from app.core.logging import log_audit_event
 from app.repositories.user_repository import UserRepository
 from app.repositories.company_repository import CompanyRepository
-from app.industry.industry_config import get_default_kpis_for_industry
-from app.models.kpi_definition import KPIDefinition
 
 
 class AuthService:
@@ -50,7 +50,7 @@ class AuthService:
         company_name = (data.company_name or f"{data.full_name}'s Workspace").strip()
         industry = data.industry or "Retail/E-commerce"
 
-        # 2. Create Company
+        # 2. Create Company Workspace
         company_repo = CompanyRepository(self.db)
         company = company_repo.create_company(
             name=company_name,
@@ -74,6 +74,20 @@ class AuthService:
         self.db.add(new_user)
         self.db.commit()
         self.db.refresh(new_user)
+
+        log_audit_event(
+            event="auth_register_admin_success",
+            details={
+                "user_id": new_user.id,
+                "email": clean_email,
+                "username": clean_username,
+                "company_id": company.id,
+                "company_name": company.name,
+                "role": new_user.role,
+            },
+            level="INFO",
+            status="SUCCESS"
+        )
 
         token_payload = {
             "sub": str(new_user.id),
@@ -115,25 +129,72 @@ class AuthService:
         if user_repo.get_by_username_global(clean_username):
             raise DatalyzeException(status_code=400, detail=f"Username '{clean_username}' is already taken. Please choose another.")
 
-        # 2. Resolve default company
-        admin_user = user_repo.get_by_email_global("admin@datalyze.com")
-        if not admin_user:
-            # Ensure primary workspace exists
-            self.register_admin(
-                AdminRegistrationRequest(
-                    full_name="Admin Leader",
-                    phone_number="+15550100",
-                    email="admin@datalyze.com",
-                    username="admin",
-                    password="Admin123!",
-                    confirm_password="Admin123!",
-                    company_name="Acme Global Workspace",
-                    industry="Retail/E-commerce"
-                )
-            )
-            admin_user = user_repo.get_by_email_global("admin@datalyze.com")
+        # 2. Resolve existing company workspace strictly
+        target_company: Optional[Company] = None
 
-        company_id = admin_user.company_id if admin_user else 1
+        # A. Match by company_name if supplied
+        if data.company_name and data.company_name.strip():
+            clean_cname = data.company_name.strip()
+            target_company = (
+                self.db.query(Company)
+                .filter(func.lower(Company.name) == clean_cname.lower(), Company.is_active == True)
+                .first()
+            )
+            if not target_company:
+                target_company = (
+                    self.db.query(Company)
+                    .filter(Company.name.ilike(f"%{clean_cname}%"), Company.is_active == True)
+                    .first()
+                )
+
+        # B. Match by email corporate domain if company_name not resolved
+        if not target_company and "@" in clean_email:
+            email_domain = clean_email.split("@")[1].lower()
+            generic_domains = {
+                "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", 
+                "icloud.com", "mail.com", "test.com", "example.com"
+            }
+            if email_domain not in generic_domains:
+                # Find company where an active admin or user has this corporate email domain
+                admin_with_domain = (
+                    self.db.query(User)
+                    .filter(
+                        User.email.ilike(f"%@{email_domain}"),
+                        User.is_active == True
+                    )
+                    .first()
+                )
+                if admin_with_domain and admin_with_domain.company_id:
+                    target_company = (
+                        self.db.query(Company)
+                        .filter(Company.id == admin_with_domain.company_id, Company.is_active == True)
+                        .first()
+                    )
+
+        # C. Single active company fallback if system has exactly 1 active workspace
+        if not target_company:
+            all_active = self.db.query(Company).filter(Company.is_active == True).all()
+            if len(all_active) == 1:
+                target_company = all_active[0]
+
+        # If NO workspace exists or none matches, reject registration cleanly
+        if not target_company:
+            log_audit_event(
+                event="auth_register_employee_rejected_no_workspace",
+                details={
+                    "email": clean_email,
+                    "username": clean_username,
+                    "requested_company": data.company_name,
+                },
+                level="WARNING",
+                status="REJECTED"
+            )
+            raise DatalyzeException(
+                status_code=400,
+                detail="No workspace found. Ask your company admin to invite you or register a new company account."
+            )
+
+        company_id = target_company.id
 
         # 3. Create Employee User
         hashed_pw = get_password_hash(data.password)
@@ -151,7 +212,19 @@ class AuthService:
         self.db.commit()
         self.db.refresh(emp_user)
 
-        company = self.db.query(Company).filter(Company.id == company_id).first()
+        log_audit_event(
+            event="auth_register_employee_success",
+            details={
+                "user_id": emp_user.id,
+                "email": clean_email,
+                "username": clean_username,
+                "company_id": company_id,
+                "company_name": target_company.name,
+                "role": emp_user.role,
+            },
+            level="INFO",
+            status="SUCCESS"
+        )
 
         token_payload = {
             "sub": str(emp_user.id),
@@ -166,11 +239,11 @@ class AuthService:
             "token_type": "bearer",
             "user": emp_user,
             "company": {
-                "id": company.id if company else 1,
-                "name": company.name if company else "Company Workspace",
-                "industry": company.industry if company else "Retail/E-commerce",
-                "currency": company.currency if company else "USD",
-                "timezone": company.timezone if company else "UTC",
+                "id": target_company.id,
+                "name": target_company.name,
+                "industry": target_company.industry,
+                "currency": target_company.currency,
+                "timezone": target_company.timezone,
             }
         }
 
@@ -208,13 +281,31 @@ class AuthService:
 
         user = user_repo.get_by_identifier_global(raw_ident)
         if not user:
+            log_audit_event(
+                event="auth_login_failure_user_not_found",
+                details={"identifier": raw_ident, "portal": portal},
+                level="WARNING",
+                status="FAILED"
+            )
             raise AuthenticationException(f"No account found matching '{raw_ident}'. Please check your credentials or register.")
 
         # Verify password strictly against user's stored hash
         if not verify_password(clean_password, user.hashed_password):
+            log_audit_event(
+                event="auth_login_failure_invalid_password",
+                details={"user_id": user.id, "identifier": raw_ident, "portal": portal},
+                level="WARNING",
+                status="FAILED"
+            )
             raise AuthenticationException("Incorrect password. Please try again or use 'Forgot password?' to reset.")
 
         if not user.is_active:
+            log_audit_event(
+                event="auth_login_failure_user_inactive",
+                details={"user_id": user.id, "identifier": raw_ident},
+                level="WARNING",
+                status="FAILED"
+            )
             raise AuthenticationException("Your user account has been disabled. Please contact your company administrator.")
 
         # Enforce strict portal role restrictions
@@ -223,12 +314,24 @@ class AuthService:
 
         if portal == "admin":
             if not is_admin_role:
+                log_audit_event(
+                    event="auth_portal_access_denied_admin_required",
+                    details={"user_id": user.id, "role": user.role, "portal": portal},
+                    level="WARNING",
+                    status="FORBIDDEN"
+                )
                 raise DatalyzeException(
                     status_code=403,
                     detail="Access denied: This portal is restricted to Company Administrators. Please sign in via the Employee Portal."
                 )
         elif portal == "employee":
             if is_admin_role:
+                log_audit_event(
+                    event="auth_portal_access_denied_employee_required",
+                    details={"user_id": user.id, "role": user.role, "portal": portal},
+                    level="WARNING",
+                    status="FORBIDDEN"
+                )
                 raise DatalyzeException(
                     status_code=403,
                     detail="Access denied: Administrator accounts must sign in via the Admin Portal."
@@ -246,6 +349,20 @@ class AuthService:
             "role": user.role,
         }
         access_token = create_access_token(data=token_payload)
+
+        log_audit_event(
+            event="auth_login_success",
+            details={
+                "user_id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "company_id": user.company_id,
+                "role": user.role,
+                "portal": portal or "default",
+            },
+            level="INFO",
+            status="SUCCESS"
+        )
 
         return {
             "access_token": access_token,
@@ -291,7 +408,7 @@ class AuthService:
 
         # Generate 6-digit verification code
         code = str(random.randint(100000, 999999))
-        expires_at = datetime.utcnow() + timedelta(minutes=15)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
 
         reset_code = PasswordResetCode(
             user_id=user.id,
@@ -309,6 +426,13 @@ class AuthService:
             masked = f"{parts[0][:2]}***@{parts[1]}"
         else:
             masked = f"{raw_ident[:3]}****{raw_ident[-2:]}" if len(raw_ident) >= 5 else raw_ident
+
+        log_audit_event(
+            event="auth_password_reset_code_generated",
+            details={"user_id": user.id, "target": masked, "portal": portal},
+            level="INFO",
+            status="SUCCESS"
+        )
 
         return {
             "success": True,
@@ -339,12 +463,34 @@ class AuthService:
         )
 
         if not code_record:
+            log_audit_event(
+                event="auth_password_reset_verify_failed_invalid_code",
+                details={"user_id": user.id},
+                level="WARNING",
+                status="FAILED"
+            )
             raise DatalyzeException(status_code=400, detail="Invalid verification code. Please check and try again.")
 
-        now_utc = datetime.utcnow()
-        exp = code_record.expires_at.replace(tzinfo=None) if code_record.expires_at.tzinfo else code_record.expires_at
+        now_utc = datetime.now(timezone.utc)
+        exp = code_record.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+            
         if exp < now_utc:
+            log_audit_event(
+                event="auth_password_reset_verify_failed_expired",
+                details={"user_id": user.id},
+                level="WARNING",
+                status="FAILED"
+            )
             raise DatalyzeException(status_code=400, detail="Verification code has expired. Please request a new code.")
+
+        log_audit_event(
+            event="auth_password_reset_code_verified",
+            details={"user_id": user.id},
+            level="INFO",
+            status="SUCCESS"
+        )
 
         return {
             "success": True,
@@ -378,11 +524,26 @@ class AuthService:
         )
 
         if not code_record:
+            log_audit_event(
+                event="auth_password_reset_confirm_failed_invalid_code",
+                details={"user_id": user.id},
+                level="WARNING",
+                status="FAILED"
+            )
             raise DatalyzeException(status_code=400, detail="Invalid verification code session.")
 
-        now_utc = datetime.utcnow()
-        exp = code_record.expires_at.replace(tzinfo=None) if code_record.expires_at.tzinfo else code_record.expires_at
+        now_utc = datetime.now(timezone.utc)
+        exp = code_record.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+            
         if exp < now_utc:
+            log_audit_event(
+                event="auth_password_reset_confirm_failed_expired",
+                details={"user_id": user.id},
+                level="WARNING",
+                status="FAILED"
+            )
             raise DatalyzeException(status_code=400, detail="Verification code has expired.")
 
         # Update password
@@ -390,21 +551,56 @@ class AuthService:
         code_record.is_used = True
         self.db.commit()
 
+        log_audit_event(
+            event="auth_password_reset_successful",
+            details={"user_id": user.id, "email": user.email},
+            level="INFO",
+            status="SUCCESS"
+        )
+
         return {
             "success": True,
             "message": "Password has been successfully updated. Please sign in with your new credentials."
         }
 
     def reset_password(self, reset_data: PasswordResetRequest) -> Dict[str, Any]:
-        return self.confirm_password_reset(
-            ForgotPasswordConfirm(
-                identifier=reset_data.email,
-                code="000000",
-                new_password=reset_data.new_password,
-                confirm_password=reset_data.new_password,
-                portal_type="admin"
-            )
+        """
+        Direct password update for authenticated sessions or legacy reset tests.
+        """
+        user_repo = UserRepository(self.db)
+        clean_email = reset_data.email.lower().strip()
+        user = user_repo.get_by_email_global(clean_email)
+        if not user:
+            raise DatalyzeException(status_code=404, detail="User account not found.")
+
+        if len(reset_data.new_password) < 6:
+            raise DatalyzeException(status_code=400, detail="Password must be at least 6 characters long.")
+
+        user.hashed_password = get_password_hash(reset_data.new_password)
+        self.db.commit()
+        self.db.refresh(user)
+
+        log_audit_event(
+            event="auth_direct_password_reset_success",
+            details={"user_id": user.id, "email": user.email},
+            level="INFO",
+            status="SUCCESS"
         )
+
+        token_payload = {
+            "sub": str(user.id),
+            "email": user.email,
+            "company_id": user.company_id,
+            "role": user.role,
+        }
+        access_token = create_access_token(data=token_payload)
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user,
+            "company": None
+        }
 
     def update_user_profile(
         self,
@@ -448,5 +644,15 @@ class AuthService:
 
         self.db.commit()
         self.db.refresh(user)
-        return user
 
+        log_audit_event(
+            event="auth_user_profile_updated",
+            details={
+                "user_id": user.id,
+                "email": user.email,
+                "username": user.username,
+            },
+            level="INFO",
+            status="SUCCESS"
+        )
+        return user

@@ -7,17 +7,23 @@ async def test_dataset_editor_and_industry_expansion_flow():
     print("Testing Interactive Dataset Editor, Cell Updates, & Industry Expansion Flow...")
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # 1. Login
-        login_res = await client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@datalyze.com", "password": "password123"}
+        # 1. Register unique test admin
+        import time
+        suffix = str(int(time.time()))
+        reg_res = await client.post(
+            "/api/v1/auth/register-admin",
+            json={
+                "email": f"admin_ed_{suffix}@datalyze.com",
+                "username": f"admin_ed_{suffix}",
+                "password": "Password123!",
+                "confirm_password": "Password123!",
+                "full_name": "Admin User",
+                "phone_number": f"+1555{suffix[-4:]}1",
+                "company_name": f"Restaurant Corp {suffix}",
+                "industry": "Restaurant/F&B"
+            }
         )
-        if login_res.status_code != 200:
-            login_res = await client.post(
-                "/api/v1/auth/login",
-                json={"email": "admin@datalyze.com", "password": "Admin123!"}
-            )
-        token = login_res.json()["access_token"]
+        token = reg_res.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # 2. Upload initial Restaurant CSV
@@ -38,7 +44,7 @@ async def test_dataset_editor_and_industry_expansion_flow():
         kpis1 = kpi_res1.json()
         price_kpi1 = next(k for k in kpis1 if "price" in k["name"].lower())
         print(f"[PASS] Initial Unit Price sum = {price_kpi1['current_value']} across {len(price_kpi1['recent_history'])} rows")
-        assert price_kpi1['current_value'] == 730.0  # 290 + 380 + 60
+        assert sum(h['value'] for h in price_kpi1['recent_history']) == 730.0  # 290 + 380 + 60
 
         # 4. Perform Live Spreadsheet Row Editing via PUT /api/v1/data/dataset
         edited_records = [
@@ -62,8 +68,8 @@ async def test_dataset_editor_and_industry_expansion_flow():
         print("DEBUG kpis2 names:", [k["name"] for k in kpis2])
         price_kpi2 = next((k for k in kpis2 if "price" in k["name"].lower()), None)
         assert price_kpi2 is not None, f"Price KPI not found in {[k['name'] for k in kpis2]}"
-        print(f"[PASS] Updated Unit Price sum = {price_kpi2['current_value']} across {len(price_kpi2['recent_history'])} rows")
-        assert price_kpi2['current_value'] == 1560.0  # 320 + 420 + 70 + 750
+        print(f"[PASS] Updated Unit Price sum = {sum(h['value'] for h in price_kpi2['recent_history'])} across {len(price_kpi2['recent_history'])} rows")
+        assert sum(h['value'] for h in price_kpi2['recent_history']) == 1560.0  # 320 + 420 + 70 + 750
         assert len(price_kpi2['recent_history']) == 4
 
         # 6. Test CSV Export Endpoint

@@ -7,6 +7,11 @@ from app.core.database import engine, Base
 import app.models  # Ensure all SQLAlchemy models are registered
 from app.api.v1.router import api_router
 from app.middleware.tenant_middleware import TenantScopingMiddleware
+from app.middleware.request_id_middleware import RequestIDMiddleware
+from app.middleware.rate_limit_middleware import RateLimitMiddleware
+
+# Ensure tables are created eagerly for both app and test client runs
+Base.metadata.create_all(bind=engine)
 
 
 @asynccontextmanager
@@ -38,16 +43,23 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS Middleware
+# 1. Request ID Correlation Middleware (outermost)
+app.add_middleware(RequestIDMiddleware)
+
+# 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"]
 )
 
-# Tenant Scoping Middleware
+# 3. Rate Limit Middleware (protects sensitive auth routes)
+app.add_middleware(RateLimitMiddleware)
+
+# 4. Tenant Scoping Middleware
 app.add_middleware(TenantScopingMiddleware)
 
 # Mount API v1 Routes

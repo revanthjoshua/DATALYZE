@@ -32,12 +32,24 @@ async def test_rbac_and_anomaly_flow():
                 is_active=True
             )
             db.add(viewer)
-            db.commit()
+
+        admin = db.query(User).filter(User.email == "admin@datalyze.com").first()
+        if not admin:
+            admin = User(
+                email="admin@datalyze.com",
+                hashed_password=hash_password("Admin123!"),
+                full_name="Test Admin",
+                role="company admin",
+                company_id=company.id,
+                is_active=True
+            )
+            db.add(admin)
+        db.commit()
 
         # Seed Warehouse & Item
         wh = db.query(WarehouseLocation).filter(WarehouseLocation.company_id == company.id).first()
         if not wh:
-            wh = WarehouseLocation(company_id=company.id, name="Main Hub", code="WH-1", region="Central", capacity=10000, used_capacity=4500)
+            wh = WarehouseLocation(company_id=company.id, name="Main Hub", code="WH-1", region="Central", capacity=10000)
             db.add(wh)
             db.commit()
             db.refresh(wh)

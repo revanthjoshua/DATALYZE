@@ -19,6 +19,7 @@ def test_admin_and_employee_role_authentication_separation(client):
         "phone_number": "+15550199",
         "email": "employee@datalyze.com",
         "username": "employee",
+        "company_name": "Acme Global Workspace",
         "password": "Employee123!",
         "confirm_password": "Employee123!"
     })
@@ -132,6 +133,7 @@ def test_admin_and_employee_registration_and_password_reset(client):
         "phone_number": "+1555987654",
         "email": "kyle.reese@datalyze.com",
         "username": "kyle_reese",
+        "company_name": "Cyberdyne Systems",
         "password": "EmployeeSecret123!",
         "confirm_password": "EmployeeSecret123!"
     })

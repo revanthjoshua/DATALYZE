@@ -7,17 +7,23 @@ async def test_uploaded_values_fidelity():
     print("Testing 100% Uploaded Values Fidelity Across All Endpoints...")
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-        # 1. Login
-        login_res = await client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@datalyze.com", "password": "password123"}
+        # 1. Register unique test admin
+        import time
+        suffix = str(int(time.time()))
+        reg_res = await client.post(
+            "/api/v1/auth/register-admin",
+            json={
+                "email": f"admin_fid_{suffix}@datalyze.com",
+                "username": f"admin_fid_{suffix}",
+                "password": "Password123!",
+                "confirm_password": "Password123!",
+                "full_name": "Admin User",
+                "phone_number": f"+1555{suffix[-4:]}1",
+                "company_name": f"Fidelity Test Corp {suffix}",
+                "industry": "Restaurant/F&B"
+            }
         )
-        if login_res.status_code != 200:
-            login_res = await client.post(
-                "/api/v1/auth/login",
-                json={"email": "admin@datalyze.com", "password": "Admin123!"}
-            )
-        token = login_res.json()["access_token"]
+        token = reg_res.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # 2. Upload Realistic Restaurant Order File (Matching User's Screenshot)

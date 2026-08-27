@@ -20,6 +20,7 @@ export interface EmployeeRegistrationPayload {
   username: string;
   password: string;
   confirm_password: string;
+  company_name?: string;
 }
 
 export interface ForgotPasswordRequestPayload {

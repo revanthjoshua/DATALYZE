@@ -107,7 +107,7 @@ export const EmployeeLoginPage: React.FC = () => {
                   setIdentifier(e.target.value);
                   if (fieldErrors.identifier) setFieldErrors((p) => ({ ...p, identifier: '' }));
                 }}
-                placeholder="employee@datalyze.com or employee"
+                placeholder="employee@company.com or username"
               />
             </FormField>
 
@@ -135,13 +135,10 @@ export const EmployeeLoginPage: React.FC = () => {
               />
             </FormField>
 
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[11px] text-neutral-400">
-                Demo: <code className="font-mono text-neutral-700 dark:text-neutral-300">employee</code> / <code className="font-mono text-neutral-700 dark:text-neutral-300">Employee123!</code>
-              </span>
+            <div className="flex items-center justify-end text-xs">
               <Link
                 to="/forgot-password/employee"
-                className="text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer shrink-0 ml-2"
+                className="text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer shrink-0"
               >
                 Forgot password?
               </Link>

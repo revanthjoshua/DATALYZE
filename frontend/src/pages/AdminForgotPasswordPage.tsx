@@ -187,7 +187,7 @@ export const AdminForgotPasswordPage: React.FC = () => {
                     setIdentifier(e.target.value);
                     if (fieldErrors.identifier) setFieldErrors({});
                   }}
-                  placeholder="admin@datalyze.com or +15550100"
+                  placeholder="admin@company.com or +15550100"
                 />
               </FormField>
 

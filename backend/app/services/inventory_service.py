@@ -176,3 +176,66 @@ class InventoryService:
             "item_id": item.id,
             "new_stock": item.current_stock
         }
+
+    def seed_sample_inventory_if_empty(self) -> None:
+        existing_wh = self.db.query(WarehouseLocation).filter(WarehouseLocation.company_id == self.tenant_id).all()
+        if not existing_wh:
+            wh1 = WarehouseLocation(company_id=self.tenant_id, name="Central Logistics Hub", code="WH-CENTRAL", region="Central", capacity=12000.0)
+            wh2 = WarehouseLocation(company_id=self.tenant_id, name="Coastal Fulfillment Center", code="WH-COASTAL", region="West", capacity=8000.0)
+            self.db.add_all([wh1, wh2])
+            self.db.commit()
+            self.db.refresh(wh1)
+            self.db.refresh(wh2)
+            existing_wh = [wh1, wh2]
+
+        existing_items = self.db.query(InventoryItem).filter(InventoryItem.company_id == self.tenant_id).all()
+        if not existing_items:
+            sample_items = [
+                InventoryItem(
+                    company_id=self.tenant_id,
+                    warehouse_id=existing_wh[0].id,
+                    sku="SKU-APX-101",
+                    name="Wireless Noise-Cancelling Headphones",
+                    category="Electronics",
+                    current_stock=8.0,
+                    reorder_point=25.0,
+                    cost_price=45.0,
+                    selling_price=89.99
+                ),
+                InventoryItem(
+                    company_id=self.tenant_id,
+                    warehouse_id=existing_wh[0].id,
+                    sku="SKU-APX-102",
+                    name="Ergonomic Mechanical Keyboard",
+                    category="Electronics",
+                    current_stock=64.0,
+                    reorder_point=30.0,
+                    cost_price=35.0,
+                    selling_price=79.99
+                ),
+                InventoryItem(
+                    company_id=self.tenant_id,
+                    warehouse_id=existing_wh[1].id if len(existing_wh) > 1 else existing_wh[0].id,
+                    sku="SKU-APX-201",
+                    name="Smart Fitness Tracker Pro",
+                    category="Wearables",
+                    current_stock=12.0,
+                    reorder_point=20.0,
+                    cost_price=28.0,
+                    selling_price=59.99
+                ),
+                InventoryItem(
+                    company_id=self.tenant_id,
+                    warehouse_id=existing_wh[1].id if len(existing_wh) > 1 else existing_wh[0].id,
+                    sku="SKU-APX-301",
+                    name="Ultra-Fast USB-C Charging Hub",
+                    category="Accessories",
+                    current_stock=110.0,
+                    reorder_point=40.0,
+                    cost_price=12.0,
+                    selling_price=29.99
+                ),
+            ]
+            self.db.add_all(sample_items)
+            self.db.commit()
+

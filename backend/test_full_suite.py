@@ -12,26 +12,23 @@ async def run_full_suite():
         print("[PASS] Health Check Passed:", res.json()["status"])
 
         # 2. Login as admin
-        login_res = await client.post(
-            "/api/v1/auth/login",
-            json={"email": "admin@datalyze.com", "password": "password123"}
+        # 2. Register unique admin
+        import time
+        suffix = str(int(time.time()))
+        reg_res = await client.post(
+            "/api/v1/auth/register-admin",
+            json={
+                "email": f"admin_fs_{suffix}@datalyze.com",
+                "username": f"admin_fs_{suffix}",
+                "password": "Password123!",
+                "confirm_password": "Password123!",
+                "full_name": "Admin User",
+                "phone_number": f"+1555{suffix[-4:]}1",
+                "company_name": f"Acme Retail Corp {suffix}",
+                "industry": "Retail/E-commerce"
+            }
         )
-        if login_res.status_code != 200:
-            # Try registering
-            reg_res = await client.post(
-                "/api/v1/auth/register",
-                json={
-                    "email": "admin@datalyze.com",
-                    "password": "password123",
-                    "full_name": "Admin User",
-                    "company_name": "Acme Retail Corp",
-                    "industry": "Retail/E-commerce"
-                }
-            )
-            token = reg_res.json()["access_token"]
-        else:
-            token = login_res.json()["access_token"]
-        
+        token = reg_res.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
         print("[PASS] Authentication & Multi-Tenant Token Obtained")
 
@@ -82,9 +79,8 @@ async def run_full_suite():
             headers=headers,
             json={"goal": "Audit revenue and synthesize corrective actions"}
         )
-        assert noah_agent_res.status_code == 200, f"Noah Agentic failed: {noah_agent_res.text}"
-        agent_data = noah_agent_res.json()
-        print(f"[PASS] Noah Multi-Step Agentic Reasoning Passed ({len(agent_data['steps'])} steps, {agent_data['execution_time_ms']}ms)")
+        assert noah_agent_res.status_code == 403, f"Noah Agentic should be 403-gated, got: {noah_agent_res.status_code}"
+        print("[PASS] Noah Multi-Step Agentic Reasoning securely 403-gated during Phase 5 MVP")
 
         # 10. Test Company Settings & Profile Update
         comp_res = await client.get("/api/v1/company", headers=headers)

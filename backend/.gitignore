@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.db
+*.sqlite3
+test_datalyze.db
+datalyze.db
+test_e2e_*.db
+.pytest_cache/
+*.log
+.env

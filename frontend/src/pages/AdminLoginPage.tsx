@@ -107,7 +107,7 @@ export const AdminLoginPage: React.FC = () => {
                   setIdentifier(e.target.value);
                   if (fieldErrors.identifier) setFieldErrors((p) => ({ ...p, identifier: '' }));
                 }}
-                placeholder="admin@datalyze.com or admin"
+                placeholder="admin@company.com or username"
               />
             </FormField>
 
@@ -135,13 +135,10 @@ export const AdminLoginPage: React.FC = () => {
               />
             </FormField>
 
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[11px] text-neutral-400">
-                Demo: <code className="font-mono text-neutral-700 dark:text-neutral-300">admin</code> / <code className="font-mono text-neutral-700 dark:text-neutral-300">Admin123!</code>
-              </span>
+            <div className="flex items-center justify-end text-xs">
               <Link
                 to="/forgot-password/admin"
-                className="text-[#6B4226] dark:text-[#8C5E3C] hover:underline font-semibold cursor-pointer shrink-0 ml-2"
+                className="text-[#6B4226] dark:text-[#8C5E3C] hover:underline font-semibold cursor-pointer shrink-0"
               >
                 Forgot password?
               </Link>

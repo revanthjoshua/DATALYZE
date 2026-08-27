@@ -186,7 +186,7 @@ export const EmployeeForgotPasswordPage: React.FC = () => {
                     setIdentifier(e.target.value);
                     if (fieldErrors.identifier) setFieldErrors({});
                   }}
-                  placeholder="employee@datalyze.com or +15550199"
+                  placeholder="employee@company.com or +15550199"
                 />
               </FormField>
 

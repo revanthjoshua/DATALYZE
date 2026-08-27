@@ -10,7 +10,7 @@ import {
   EyeOff,
   AlertCircle,
   ArrowRight,
-  Sparkles,
+  Building2,
   AtSign,
 } from 'lucide-react';
 import { authApi } from '../api/authApi';
@@ -28,6 +28,7 @@ export const EmployeeRegisterPage: React.FC = () => {
     phone_number: '',
     email: '',
     username: '',
+    company_name: '',
     password: '',
     confirm_password: '',
   });
@@ -90,6 +91,7 @@ export const EmployeeRegisterPage: React.FC = () => {
         phone_number: formData.phone_number.trim(),
         email: formData.email.trim().toLowerCase(),
         username: formData.username.trim().toLowerCase(),
+        company_name: formData.company_name.trim() || undefined,
         password: formData.password,
         confirm_password: formData.confirm_password,
       });
@@ -120,7 +122,7 @@ export const EmployeeRegisterPage: React.FC = () => {
           Create Employee Account
         </h2>
         <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto font-normal">
-          Register employee credentials to access daily metrics, actionable tasks, alerts, and stock data
+          Join your company workspace to access daily metrics, actionable tasks, alerts, and stock intelligence
         </p>
       </div>
 
@@ -175,7 +177,7 @@ export const EmployeeRegisterPage: React.FC = () => {
                     setFormData((p) => ({ ...p, email: e.target.value }));
                     if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: '' }));
                   }}
-                  placeholder="employee@yourcompany.com"
+                  placeholder="employee@company.com"
                 />
               </FormField>
 
@@ -193,6 +195,21 @@ export const EmployeeRegisterPage: React.FC = () => {
                 />
               </FormField>
             </div>
+
+            <FormField 
+              label="Company / Workspace Name" 
+              helperText="Enter your company workspace name or leave blank if using company domain email"
+            >
+              <Input
+                type="text"
+                leftIcon={<Building2 className="w-4 h-4" />}
+                value={formData.company_name}
+                onChange={(e) => {
+                  setFormData((p) => ({ ...p, company_name: e.target.value }));
+                }}
+                placeholder="e.g. Apex Analytics (Optional)"
+              />
+            </FormField>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Password" required error={fieldErrors.password}>
@@ -250,7 +267,7 @@ export const EmployeeRegisterPage: React.FC = () => {
               isLoading={loading}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Create Employee Account
+              Join Workspace as Employee
             </Button>
           </form>
 

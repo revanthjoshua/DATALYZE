@@ -41,7 +41,7 @@ async def test_auth_and_recovery():
         assert notfound_res.status_code == 401
         print("[PASS] Non-Existent User Returns Clear Detail:", notfound_res.json()["detail"])
 
-        # 5. Test Registering existing user with matching password auto-logs in
+        # 5. Test Registering existing user is properly rejected
         dup_res = await client.post(
             "/api/v1/auth/register",
             json={
@@ -52,8 +52,8 @@ async def test_auth_and_recovery():
                 "industry": "Retail/E-commerce"
             }
         )
-        assert dup_res.status_code in [200, 201], f"Auto-login on register failed: {dup_res.text}"
-        print("[PASS] Existing Account Register with Matching Password Auto-Logs in Seamlessly!")
+        assert dup_res.status_code == 400, f"Duplicate register should return 400, got: {dup_res.status_code}"
+        print("[PASS] Duplicate Account Registration cleanly rejected with 400:", dup_res.json()["detail"])
 
     print("\n=======================================================")
     print("ALL AUTHENTICATION & RECOVERY FLOWS TESTED & PASSED!")
