@@ -1,4 +1,7 @@
+import os
 import re
+import hashlib
+import shutil
 from typing import Dict, Any, List, Optional, Set
 from datetime import datetime, timedelta, timezone
 import pandas as pd
@@ -14,7 +17,10 @@ from app.models.recommendation import Recommendation
 from app.models.prediction import Prediction
 from app.models.inventory_item import InventoryItem
 from app.models.warehouse_location import WarehouseLocation
+from app.models.report import Report
+from app.models.uploaded_dataset import UploadedDataset
 from app.repositories.kpi_repository import KPIRepository
+from app.repositories.dataset_repository import DatasetRepository
 from app.schemas.data_schema import (
     ValidationErrorItem,
     DataValidationResult,
@@ -32,6 +38,8 @@ class DataProcessingService:
         self.db = db
         self.tenant_id = tenant_id
         self.kpi_repo = KPIRepository(db, tenant_id=tenant_id)
+        self.dataset_repo = DatasetRepository(db, tenant_id=tenant_id)
+
 
     def process_dataframe(self, df: pd.DataFrame, source_filename: str = "upload.csv") -> IngestionResponse:
         """
@@ -164,10 +172,14 @@ class DataProcessingService:
             self.db.query(Recommendation).filter(Recommendation.company_id == self.tenant_id).delete()
             self.db.query(Prediction).filter(Prediction.company_id == self.tenant_id).delete()
             self.db.query(InventoryItem).filter(InventoryItem.company_id == self.tenant_id).delete()
+            self.db.query(WarehouseLocation).filter(WarehouseLocation.company_id == self.tenant_id).delete()
+            self.db.query(Report).filter(Report.company_id == self.tenant_id).delete()
             self.db.query(KPIDefinition).filter(KPIDefinition.company_id == self.tenant_id).delete()
+            self.db.query(UploadedDataset).filter(UploadedDataset.company_id == self.tenant_id).delete()
             self.db.commit()
         except Exception:
             self.db.rollback()
+
 
         # 5. Create KPI Definitions STRICTLY for columns in the uploaded file using detected types
         kpi_defs: Dict[str, KPIDefinition] = {}
@@ -337,13 +349,39 @@ class DataProcessingService:
                         )
                         updated_kpis_set.add(kpi_obj.name)
 
-        # 8. Store full dataset, dynamic schema, and profile in TenantDatasetStore
+        # 8. Store full dataset, dynamic schema, and profile in TenantDatasetStore & Database Record
         TenantDatasetStore.set_dataset(
             self.tenant_id,
             df_norm,
             source_filename=source_filename,
             detected_profile=detected_profile
         )
+
+        # 8b. Persist dataset to tenant-scoped storage and database
+        try:
+            storage_dir = os.path.join("storage", "tenants", str(self.tenant_id), "datasets")
+            os.makedirs(storage_dir, exist_ok=True)
+            storage_path = os.path.join(storage_dir, source_filename)
+            df_norm.to_csv(storage_path, index=False)
+            
+            # Compute file hash
+            file_bytes = df_norm.to_csv(index=False).encode("utf-8")
+            file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+            self.dataset_repo.record_dataset(
+                filename=source_filename,
+                row_count=total_rows,
+                col_count=len(df_norm.columns),
+                file_hash=file_hash,
+                schema_metadata=detected_schema,
+                detected_profile=detected_profile,
+                storage_path=storage_path,
+                source_type="upload" if not source_filename.startswith("demo_") else "sample"
+            )
+        except Exception as e:
+            # Non-blocking for persistence errors
+            pass
+
 
         # 9. Automatically Trigger Analytics & Intelligence Engines on the fresh data
         try:
@@ -584,3 +622,58 @@ class DataProcessingService:
                 if col.lower() == c.lower() or col.lower().startswith(c.lower()):
                     return col
         return None
+
+    def delete_active_dataset(self) -> Dict[str, Any]:
+        """
+        Safely and permanently deletes the uploaded dataset and ALL derived analytical
+        data (KPI definitions, time-series values, detections, predictions, prescriptions,
+        alerts, reports, generated inventory, storage files, and in-memory cache)
+        strictly scoped to the authenticated tenant_id.
+        """
+        # 1. Purge In-Memory Store
+        TenantDatasetStore.clear_dataset(self.tenant_id)
+
+        # 2. Purge On-Disk Storage Files for this Tenant
+        tenant_storage_dir = os.path.join("storage", "tenants", str(self.tenant_id))
+        if os.path.exists(tenant_storage_dir):
+            try:
+                shutil.rmtree(tenant_storage_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+        # 3. Cascading Database Deletion strictly scoped to self.tenant_id
+        try:
+            deleted_vals = self.kpi_repo.clear_all_values()
+            deleted_alerts = self.db.query(Alert).filter(Alert.company_id == self.tenant_id).delete()
+            deleted_causes = self.db.query(RootCauseResult).filter(RootCauseResult.company_id == self.tenant_id).delete()
+            deleted_events = self.db.query(DetectionEvent).filter(DetectionEvent.company_id == self.tenant_id).delete()
+            deleted_recs = self.db.query(Recommendation).filter(Recommendation.company_id == self.tenant_id).delete()
+            deleted_preds = self.db.query(Prediction).filter(Prediction.company_id == self.tenant_id).delete()
+            deleted_reports = self.db.query(Report).filter(Report.company_id == self.tenant_id).delete()
+            deleted_inv = self.db.query(InventoryItem).filter(InventoryItem.company_id == self.tenant_id).delete()
+            deleted_wh = self.db.query(WarehouseLocation).filter(WarehouseLocation.company_id == self.tenant_id).delete()
+            deleted_kpis = self.db.query(KPIDefinition).filter(KPIDefinition.company_id == self.tenant_id).delete()
+            deleted_datasets = self.db.query(UploadedDataset).filter(UploadedDataset.company_id == self.tenant_id).delete()
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        return {
+            "success": True,
+            "message": "Dataset and all associated analytics data have been permanently deleted.",
+            "deleted_summary": {
+                "datasets": deleted_datasets,
+                "kpis": deleted_kpis,
+                "kpi_values": deleted_vals,
+                "detections": deleted_events,
+                "root_causes": deleted_causes,
+                "predictions": deleted_preds,
+                "recommendations": deleted_recs,
+                "alerts": deleted_alerts,
+                "reports": deleted_reports,
+                "inventory_items": deleted_inv,
+                "warehouses": deleted_wh,
+            }
+        }
+

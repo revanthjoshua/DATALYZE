@@ -1,0 +1,6 @@
+date,customer_segment,product_category,revenue,units,sales_channel,_parsed_date
+2026-08-01,Enterprise,Electronics,12500.0,25.0,Direct Sales,2026-08-01
+2026-08-02,SMB,Apparel,3400.0,40.0,Online Store,2026-08-02
+2026-08-03,Enterprise,Electronics,8900.0,18.0,Direct Sales,2026-08-03
+2026-08-04,Consumer,Home & Living,1850.5,12.0,Mobile App,2026-08-04
+2026-08-05,SMB,Electronics,5200.0,10.0,Marketplace,2026-08-05

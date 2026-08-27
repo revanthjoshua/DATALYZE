@@ -43,16 +43,17 @@ class DetectionService:
                     company_id=self.tenant_id,
                     kpi_id=kpi.id,
                     detected_at=result["detected_at"],
-                    direction=result["direction"],
-                    magnitude=result["magnitude"],
-                    percentage_change=result["percentage_change"],
-                    baseline_value=result["baseline_value"],
-                    current_value=result["current_value"],
-                    severity=result["severity"],
+                    direction=str(result["direction"]),
+                    magnitude=float(result["magnitude"]) if result["magnitude"] is not None else 0.0,
+                    percentage_change=float(result["percentage_change"]) if result["percentage_change"] is not None else 0.0,
+                    baseline_value=float(result["baseline_value"]) if result["baseline_value"] is not None else 0.0,
+                    current_value=float(result["current_value"]) if result["current_value"] is not None else 0.0,
+                    severity=str(result["severity"]),
                     status="active"
                 )
                 self.db.add(detection)
                 self.db.commit()
+
                 self.db.refresh(detection)
 
                 # Trigger Root-Cause Analysis immediately

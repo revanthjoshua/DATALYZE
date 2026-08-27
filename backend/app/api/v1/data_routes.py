@@ -1,3 +1,4 @@
+import os
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta, timezone
 import random
@@ -13,6 +14,8 @@ from app.services.company_service import CompanyService
 from app.services.dataset_store import TenantDatasetStore
 from app.middleware.auth_middleware import get_current_tenant_id, get_current_user, require_analyst_user
 from app.models.user import User
+from app.models.uploaded_dataset import UploadedDataset
+
 
 router = APIRouter(prefix="/data", tags=["Data Ingestion & Pipeline"])
 
@@ -180,15 +183,50 @@ def load_sample_dataset(
     return processing_service.process_dataframe(df, source_filename=f"demo_{industry.lower().replace('/', '_')}_sample_30d.csv")
 
 
+@router.delete("/dataset")
+def delete_dataset(
+    current_user: User = Depends(require_analyst_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Deletes the tenant's uploaded dataset, disk files, in-memory cache,
+    and ALL generated analytics (KPIs, values, detections, predictions,
+    recommendations, alerts, reports, inventory items, and warehouse locations).
+    """
+    tenant_id = current_user.company_id
+    processing_service = DataProcessingService(db, tenant_id=tenant_id)
+    return processing_service.delete_active_dataset()
+
+
 @router.get("/dataset/info")
 @router.get("/dataset-info")
-def get_dataset_info(tenant_id: int = Depends(get_current_tenant_id)):
+def get_dataset_info(
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
+):
     """
-    Returns active in-memory dataset metadata, column catalog, and statistical profiling.
+    Returns active dataset metadata, column catalog, and statistical profiling.
+    Restores from persistent database and disk storage if in-memory cache was cleared.
     """
     meta = TenantDatasetStore.get_metadata(tenant_id)
     if not meta:
-        return {"has_dataset": False, "message": "No active dataset currently cached in memory."}
+        # Check if dataset exists in database
+        dataset = db.query(UploadedDataset).filter(UploadedDataset.company_id == tenant_id).order_by(UploadedDataset.created_at.desc()).first()
+        if dataset and dataset.storage_path and os.path.exists(dataset.storage_path):
+            try:
+                df = pd.read_csv(dataset.storage_path)
+                TenantDatasetStore.set_dataset(
+                    tenant_id=tenant_id,
+                    df=df,
+                    source_filename=dataset.filename,
+                    detected_profile=dataset.detected_profile
+                )
+                meta = TenantDatasetStore.get_metadata(tenant_id)
+            except Exception:
+                pass
+
+    if not meta:
+        return {"has_dataset": False, "message": "No active dataset currently uploaded."}
     return {"has_dataset": True, **meta}
 
 
@@ -197,12 +235,29 @@ def get_dataset_info(tenant_id: int = Depends(get_current_tenant_id)):
 def get_dataset_preview(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    tenant_id: int = Depends(get_current_tenant_id)
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
 ):
     """
-    Returns paginated raw data rows from the active in-memory dataset.
+    Returns paginated raw data rows from the active dataset.
     """
+    df = TenantDatasetStore.get_dataset(tenant_id)
+    if df is None:
+        dataset = db.query(UploadedDataset).filter(UploadedDataset.company_id == tenant_id).order_by(UploadedDataset.created_at.desc()).first()
+        if dataset and dataset.storage_path and os.path.exists(dataset.storage_path):
+            try:
+                df = pd.read_csv(dataset.storage_path)
+                TenantDatasetStore.set_dataset(
+                    tenant_id=tenant_id,
+                    df=df,
+                    source_filename=dataset.filename,
+                    detected_profile=dataset.detected_profile
+                )
+            except Exception:
+                pass
+
     return TenantDatasetStore.get_preview(tenant_id, limit=limit, offset=offset)
+
 
 
 @router.post("/dataset/query")

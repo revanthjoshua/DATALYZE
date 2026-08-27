@@ -99,12 +99,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    localStorage.removeItem('datalyze_token');
-    localStorage.removeItem('datalyze_user');
-    localStorage.removeItem('datalyze_company');
+    const theme = localStorage.getItem('datalyze_theme');
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('datalyze_') && key !== 'datalyze_theme') {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    if (theme) localStorage.setItem('datalyze_theme', theme);
     setToken(null);
     setUser(null);
   };
+
 
   return (
     <AuthContext.Provider

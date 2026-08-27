@@ -47,17 +47,18 @@ class PredictionService:
                     company_id=self.tenant_id,
                     kpi_id=kpi.id,
                     forecast_date=fp["forecast_date"],
-                    predicted_value=fp["predicted_value"],
-                    range_low=fp["range_low"],
-                    range_high=fp["range_high"],
-                    confidence_level=fp["confidence_level"],
-                    method=fp["method"],
+                    predicted_value=float(fp["predicted_value"]) if fp["predicted_value"] is not None else 0.0,
+                    range_low=float(fp["range_low"]) if fp["range_low"] is not None else 0.0,
+                    range_high=float(fp["range_high"]) if fp["range_high"] is not None else 0.0,
+                    confidence_level=str(fp.get("confidence_level", "moderate")),
+                    method=str(fp["method"]),
                     model_details=fp.get("model_details")
                 )
                 self.db.add(pred)
                 generated.append(pred)
 
         self.db.commit()
+
         return generated
 
     def get_predictions_for_kpi(self, kpi_id: int, horizon_days: int = 7) -> List[Prediction]:
@@ -90,11 +91,12 @@ class PredictionService:
                 company_id=self.tenant_id,
                 kpi_id=kpi_id,
                 forecast_date=fp["forecast_date"],
-                predicted_value=fp["predicted_value"],
-                range_low=fp["range_low"],
-                range_high=fp["range_high"],
-                confidence_level=fp["confidence_level"],
-                method=fp["method"],
+                predicted_value=float(fp["predicted_value"]) if fp["predicted_value"] is not None else 0.0,
+                range_low=float(fp["range_low"]) if fp["range_low"] is not None else 0.0,
+                range_high=float(fp["range_high"]) if fp["range_high"] is not None else 0.0,
+                confidence_level=str(fp.get("confidence_level", "moderate")),
+                method=str(fp["method"]),
+
                 model_details=fp.get("model_details")
             )
             self.db.add(pred)
@@ -102,6 +104,7 @@ class PredictionService:
 
         self.db.commit()
         return fresh_preds
+
 
     def list_all_predictions(self) -> List[Prediction]:
         return self.prediction_repo.get_all(order_by_col="forecast_date", ascending=True)

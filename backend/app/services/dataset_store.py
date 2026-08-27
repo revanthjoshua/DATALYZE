@@ -59,11 +59,25 @@ class TenantDatasetStore:
         }
 
     @classmethod
+    def clear_dataset(cls, tenant_id: int) -> bool:
+        """Purges in-memory dataset cache for specific tenant workspace."""
+        if tenant_id in cls._store:
+            del cls._store[tenant_id]
+            return True
+        return False
+
+    @classmethod
+    def clear_all(cls) -> None:
+        """Clears all in-memory datasets (used for test resets)."""
+        cls._store.clear()
+
+    @classmethod
     def get_dataset(cls, tenant_id: int) -> Optional[pd.DataFrame]:
         tenant_data = cls._store.get(tenant_id)
         if tenant_data and "df" in tenant_data:
             return tenant_data["df"]
         return None
+
 
     @classmethod
     def get_metadata(cls, tenant_id: int) -> Optional[Dict[str, Any]]:

@@ -106,16 +106,17 @@ class RootCauseService:
             rc = RootCauseResult(
                 company_id=self.tenant_id,
                 detection_id=detection.id,
-                dimension_name=c["dimension_name"],
-                dimension_value=c["dimension_value"],
-                contribution_percentage=c["contribution_percentage"],
-                explanation_text=c["explanation_text"],
-                confidence_score=c.get("confidence_score", 0.85)
+                dimension_name=str(c["dimension_name"]),
+                dimension_value=str(c["dimension_value"]),
+                contribution_percentage=float(c["contribution_percentage"]) if c["contribution_percentage"] is not None else 0.0,
+                explanation_text=str(c["explanation_text"]),
+                confidence_score=float(c.get("confidence_score", 0.85)) if c.get("confidence_score") is not None else 0.85
             )
             self.db.add(rc)
             persisted.append(rc)
 
         self.db.commit()
+
         return persisted
 
     def get_root_causes_for_detection(self, detection_id: int) -> List[RootCauseResult]:

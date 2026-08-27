@@ -56,4 +56,10 @@ export const dataApi = {
   getDatasetDownloadUrl: (): string => {
     return `/api/v1/data/dataset/download`;
   },
+
+  deleteDataset: async (): Promise<{ success: boolean; message: string; deleted_summary?: any }> => {
+    const res = await axiosClient.delete('/data/dataset');
+    return res.data;
+  },
 };
+

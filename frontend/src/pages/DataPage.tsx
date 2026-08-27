@@ -41,8 +41,9 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';
-import { StateView } from '../components/ui/StateView';
+import { StateView, EmptyState } from '../components/ui/StateView';
 import { Modal } from '../components/ui/Modal';
+
 import { FormField, Input, Select, Textarea } from '../components/ui/FormField';
 
 export const DataPage: React.FC = () => {
@@ -82,6 +83,46 @@ export const DataPage: React.FC = () => {
   const [editorLoading, setEditorLoading] = useState<boolean>(false);
   const [editorSaving, setEditorSaving] = useState<boolean>(false);
   const [editorSearch, setEditorSearch] = useState<string>('');
+
+  // Delete Dataset Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
+
+  const handleDeleteDataset = async () => {
+    setDeleteLoading(true);
+    try {
+      await dataApi.deleteDataset();
+
+      // Clear tenant-scoped browser state
+      const keysToRemove = [
+        'datalyze_approved_transfers',
+        'datalyze_inv_risk',
+        'datalyze_pred_kpi_id',
+        'datalyze_kpi_cat',
+        'datalyze_rec_pri',
+        'datalyze_rec_stat',
+        'datalyze_alerts_sev',
+        'datalyze_alerts_stat',
+      ];
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+      setDatasetInfo(null);
+      setDatasetPreview(null);
+      setResponse(null);
+      setQueryResults(null);
+      setTableSearch('');
+      setIsDeleteModalOpen(false);
+      toast.success(
+        'Uploaded dataset and all generated analytics (KPIs, detections, predictions, alerts, inventory) have been permanently deleted.',
+        'Dataset Deleted'
+      );
+    } catch (err: any) {
+      toast.error('Failed to delete dataset. Please try again.', 'Delete Failed');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
 
   const fetchActiveDataset = async (page: number = 0, limit: number = previewLimit) => {
     try {
@@ -404,14 +445,24 @@ export const DataPage: React.FC = () => {
         actions={
           <div className="flex items-center space-x-2">
             {datasetInfo && datasetInfo.has_dataset ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleOpenEditor}
-                leftIcon={<Eye className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#D5B79F]" />}
-              >
-                View & Edit File
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleOpenEditor}
+                  leftIcon={<Eye className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#D5B79F]" />}
+                >
+                  View & Edit File
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                >
+                  Delete Dataset
+                </Button>
+              </>
             ) : (
               <Button
                 variant="outline"
@@ -425,6 +476,7 @@ export const DataPage: React.FC = () => {
             )}
           </div>
         }
+
       />
 
       {/* Upload Modes & Input Panel */}
@@ -548,8 +600,29 @@ export const DataPage: React.FC = () => {
         )}
       </Card>
 
+      {/* Empty State when no dataset uploaded */}
+      {(!datasetInfo || !datasetInfo.has_dataset) && (
+        <EmptyState
+          icon={FileSpreadsheet}
+          title="No files uploaded yet"
+          description="Upload your business dataset, sales register, or operational spreadsheet above to automatically detect metrics, calculate KPIs, and power intelligence models."
+          customAction={
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              leftIcon={<Upload className="w-3.5 h-3.5" />}
+            >
+              Upload File Now
+            </Button>
+          }
+        />
+      )}
+
       {/* Active Dataset Inspection & Schema Viewer */}
       {datasetInfo && datasetInfo.has_dataset && (
+
+
         <div className="space-y-6">
           {/* Dataset Statistics Card */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -1026,6 +1099,56 @@ export const DataPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Delete Dataset Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => !deleteLoading && setIsDeleteModalOpen(false)}
+        title="Delete Uploaded Dataset"
+        description="Permanently remove uploaded file and all generated intelligence"
+        maxWidth="md"
+        icon={<Trash2 className="w-5 h-5 text-red-600" />}
+      >
+        <div className="space-y-4 py-1">
+          <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start space-x-3 text-red-700 dark:text-red-300 text-xs">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-sm mb-1">Permanent Data Deletion</p>
+              <p>
+                Are you sure you want to delete the active dataset <strong>"{datasetInfo?.filename || 'dataset'}"</strong>?
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            This will permanently remove the uploaded file, column schemas, and <strong>ALL generated analytical intelligence</strong> (KPI definitions, time-series values, anomaly detections, root causes, forward predictions, recommendations, alerts, reports, and smart inventory items).
+          </p>
+          <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+            Your workspace will return to a clean, empty state ready for a new file upload.
+          </p>
+
+          <div className="flex items-center justify-end space-x-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deleteLoading}
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              isLoading={deleteLoading}
+              onClick={handleDeleteDataset}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            >
+              Permanently Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
+
+

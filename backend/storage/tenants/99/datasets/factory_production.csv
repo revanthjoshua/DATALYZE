@@ -1,0 +1,5 @@
+date,operator,factory_line,energy_kwh,defect_rate,revenue,_parsed_date
+2026-08-01,Alice,Line-A,450.0,1.5,5200.0,2026-08-01
+2026-08-02,Bob,Line-B,480.0,2.1,4800.0,2026-08-02
+2026-08-03,Alice,Line-A,510.0,1.8,6100.0,2026-08-03
+2026-08-04,Charlie,Line-C,430.0,0.9,5900.0,2026-08-04
