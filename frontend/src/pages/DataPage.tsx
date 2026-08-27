@@ -355,8 +355,16 @@ export const DataPage: React.FC = () => {
     }
   };
 
-  const handleDownloadCsv = () => {
-    window.open(dataApi.getDatasetDownloadUrl(), '_blank');
+  const handleDownloadCsv = async () => {
+    const blob = await dataApi.downloadDataset();
+const url = window.URL.createObjectURL(blob);
+const link = document.createElement('a');
+link.href = url;
+link.download = 'datalyze_dataset.csv';
+document.body.appendChild(link);
+link.click();
+link.remove();
+window.URL.revokeObjectURL(url);
   };
 
   // Helper to render styled badge for auto-detected data types

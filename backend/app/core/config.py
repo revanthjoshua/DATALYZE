@@ -20,19 +20,20 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    # Database settings: Supports PostgreSQL or SQLite
+    # Database settings: Supports PostgreSQL
     DATABASE_URL: str = Field(
-        default="sqlite:///./datalyze.db",
+        default="",
         validation_alias="DATABASE_URL"
     )
 
     # CORS: Restricted strictly to trusted application origins
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: List[str] = Field(
+    default=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
+    ],
+    validation_alias="CORS_ORIGINS"
+    )
 
     # Email Service (Resend) Settings
     RESEND_API_KEY: Optional[str] = Field(default=None, validation_alias="RESEND_API_KEY")

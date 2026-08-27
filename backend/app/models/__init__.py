@@ -13,10 +13,12 @@ from app.models.inventory_item import InventoryItem
 from app.models.warehouse_location import WarehouseLocation
 from app.models.uploaded_dataset import UploadedDataset
 from app.models.invitation import Invitation
+from app.models.password_reset_code import PasswordResetCode
 
 __all__ = [
     "Company",
     "User",
+    "PasswordResetCode",
     "UserRole",
     "KPIDefinition",
     "KPIValue",

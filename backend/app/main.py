@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import engine, Base
 import app.models  # Ensure all SQLAlchemy models are registered
@@ -19,18 +18,6 @@ async def lifespan(app: FastAPI):
     # Initialize database tables on startup
     Base.metadata.create_all(bind=engine)
     
-    # Ensure SQLite columns exist if upgrading existing databases
-    with engine.connect() as conn:
-        try:
-            res = conn.execute(text("PRAGMA table_info(users)"))
-            cols = [row[1] for row in res.fetchall()]
-            if "username" not in cols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(100)"))
-            if "phone_number" not in cols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN phone_number VARCHAR(50)"))
-            conn.commit()
-        except Exception:
-            pass
     yield
 
 

@@ -49,13 +49,20 @@ export const dataApi = {
     return res.data;
   },
 
-  getSampleCsvUrl: (templateType: string = 'retail'): string => {
-    return `/api/v1/data/sample-csv?type=${templateType}`;
-  },
+  downloadSampleCsv: async (templateType: string = 'retail'): Promise<Blob> => {
+  const res = await axiosClient.get('/data/sample-csv', {
+    params: { type: templateType },
+    responseType: 'blob',
+  });
+  return res.data;
+},
 
-  getDatasetDownloadUrl: (): string => {
-    return `/api/v1/data/dataset/download`;
-  },
+downloadDataset: async (): Promise<Blob> => {
+  const res = await axiosClient.get('/data/dataset/download', {
+    responseType: 'blob',
+  });
+  return res.data;
+},
 
   deleteDataset: async (): Promise<{ success: boolean; message: string; deleted_summary?: any }> => {
     const res = await axiosClient.delete('/data/dataset');
