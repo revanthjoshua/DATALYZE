@@ -88,39 +88,6 @@ def update_dataset(
     return processing_service.process_dataframe(df, source_filename=filename)
 
 
-@router.get("/dataset/download")
-def download_active_dataset(
-    tenant_id: int = Depends(get_current_tenant_id)
-):
-    """
-    Exports the current active dataset as a CSV file download.
-    """
-    df = TenantDatasetStore.get_dataset(tenant_id)
-    if df is None or len(df) == 0:
-        raise HTTPException(status_code=404, detail="No active dataset available to download.")
-
-    # Remove internal tracking columns
-    clean_df = df.copy()
-    for col in list(clean_df.columns):
-        if col.startswith("_"):
-            clean_df.drop(columns=[col], inplace=True)
-
-    csv_buffer = io.StringIO()
-    clean_df.to_csv(csv_buffer, index=False)
-    csv_str = csv_buffer.getvalue()
-
-    meta = TenantDatasetStore.get_metadata(tenant_id) or {}
-    filename = meta.get("filename", "datalyze_active_dataset.csv")
-    if not filename.endswith(".csv"):
-        filename = f"{filename.rsplit('.', 1)[0]}.csv"
-
-    return Response(
-        content=csv_str,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
-    )
-
-
 @router.post("/load-sample", response_model=IngestionResponse)
 def load_sample_dataset(
     current_user: User = Depends(require_analyst_user),
@@ -393,3 +360,4 @@ def download_sample_csv(template_type: str = Query("retail", alias="type")):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
