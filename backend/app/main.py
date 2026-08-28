@@ -27,13 +27,18 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+cors_origins = list(settings.CORS_ORIGINS)
+frontend_origin = settings.FRONTEND_URL.rstrip("/")
+if frontend_origin and frontend_origin not in cors_origins:
+    cors_origins.append(frontend_origin)
+
 # 1. Request ID Correlation Middleware (outermost)
 app.add_middleware(RequestIDMiddleware)
 
 # 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,3 +64,4 @@ def root():
         "version": "1.0.0",
         "docs": "/docs"
     }
+
