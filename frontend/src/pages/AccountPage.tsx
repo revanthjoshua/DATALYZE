@@ -98,6 +98,9 @@ export const AccountPage: React.FC = () => {
   const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: Record<string, string> = {};
+    if (!currentPassword) {
+      errors.currentPassword = 'Please enter your current password.';
+    }
     if (!newPassword) {
       errors.newPassword = 'Please enter a new password.';
     } else if (newPassword.length < 6) {
@@ -115,7 +118,10 @@ export const AccountPage: React.FC = () => {
       setPwLoading(true);
       setPwErrors({});
       // Persist password hash to the backend database
-      await authApi.updateProfile({ password: newPassword });
+      await authApi.updateProfile({
+        current_password: currentPassword,
+        password: newPassword,
+      });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -347,6 +353,20 @@ export const AccountPage: React.FC = () => {
             </CardHeader>
 
             <form onSubmit={handleUpdatePassword} className="space-y-4">
+              <FormField label="Current Password" required error={pwErrors.currentPassword}>
+                <Input
+                  type={showPw ? 'text' : 'password'}
+                  value={currentPassword}
+                  onChange={(e) => {
+                    setCurrentPassword(e.target.value);
+                    if (pwErrors.currentPassword) setPwErrors((p) => ({ ...p, currentPassword: '' }));
+                  }}
+                  autoComplete="current-password"
+                  placeholder="Enter your current password"
+                  leftIcon={<KeyRound className="w-4 h-4" />}
+                />
+              </FormField>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormField label="New Password" required error={pwErrors.newPassword}>
                   <Input
@@ -402,3 +422,4 @@ export const AccountPage: React.FC = () => {
     </div>
   );
 };
+

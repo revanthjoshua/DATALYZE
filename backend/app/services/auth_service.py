@@ -356,12 +356,19 @@ class AuthService:
         self.db.commit()
 
         # 4. Dispatch verification code via Resend transactional email
-        email_service.send_password_reset_otp_email(
+        delivery = email_service.send_password_reset_otp_email(
             to_email=user.email,
             recipient_name=user.full_name,
             otp_code=code,
             expires_in_minutes=15
         )
+        if not delivery.get("success"):
+            self.db.delete(reset_code)
+            self.db.commit()
+            raise DatalyzeException(
+                status_code=502,
+                detail="The verification email could not be delivered. Check the Resend production configuration and try again."
+            )
 
         # 5. Mask target for privacy
         if "@" in raw_ident:
@@ -517,7 +524,8 @@ class AuthService:
         email: Optional[str] = None,
         username: Optional[str] = None,
         phone_number: Optional[str] = None,
-        password: Optional[str] = None
+        password: Optional[str] = None,
+        current_password: Optional[str] = None
     ) -> User:
         user = self.db.query(User).filter(User.id == user_id).first()
         if not user:
@@ -546,6 +554,8 @@ class AuthService:
                 user.email = clean_email
 
         if password and password.strip():
+            if not current_password or not verify_password(current_password, user.hashed_password):
+                raise DatalyzeException(status_code=400, detail="Current password is incorrect.")
             if len(password.strip()) < 6:
                 raise DatalyzeException(status_code=400, detail="Password must be at least 6 characters long.")
             user.hashed_password = get_password_hash(password.strip())
@@ -564,3 +574,4 @@ class AuthService:
             status="SUCCESS"
         )
         return user
+

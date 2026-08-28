@@ -79,6 +79,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
+    current_password: Optional[str] = None
 
 
 class UserOut(UserBase):
@@ -96,4 +97,5 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     user: UserOut
     company: Optional[dict] = None
+
 
