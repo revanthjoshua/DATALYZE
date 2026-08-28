@@ -1,9 +1,19 @@
 import axios from 'axios';
 
+function getApiBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+  if (!envUrl) {
+    return '/api/v1';
+  }
+  const cleanUrl = envUrl.replace(/\/+$/, '');
+  if (cleanUrl.endsWith('/api/v1')) {
+    return cleanUrl;
+  }
+  return `${cleanUrl}/api/v1`;
+}
+
 const axiosClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL
-  ? `${import.meta.env.VITE_API_BASE_URL}/api/v1`
-  : '/api/v1',
+  baseURL: getApiBaseUrl(),
 });
 
 // Request interceptor: Attach JWT token automatically & handle FormData boundary
@@ -29,12 +39,12 @@ axiosClient.interceptors.response.use(
     const isAuthEndpoint =
       url.includes('/auth/login') ||
       url.includes('/auth/register') ||
-      url.includes('/auth/reset-password');
+      url.includes('/auth/forgot-password');
 
     if (error.response && error.response.status === 401 && !isAuthEndpoint) {
       localStorage.removeItem('datalyze_token');
       localStorage.removeItem('datalyze_user');
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
+      if (window.location.pathname !== '/login' && !window.location.pathname.startsWith('/login/')) {
         window.location.href = '/login';
       }
     }

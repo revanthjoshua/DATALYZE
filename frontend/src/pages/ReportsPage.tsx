@@ -124,6 +124,21 @@ export const ReportsPage: React.FC = () => {
     return { healthSummary, anomalyNarrative, actionNarrative };
   };
 
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
+
+  const handleDownloadCsv = async () => {
+    try {
+      setDownloadingCsv(true);
+      const blob = await reportApi.downloadKpiSummaryCsv();
+      reportApi.triggerDownloadBlob(blob, 'datalyze_executive_briefing_report.csv');
+      toast.success('Executive KPI summary CSV exported successfully.', 'Export Complete');
+    } catch (err: any) {
+      toast.error('Failed to download KPI summary report.', 'Download Error');
+    } finally {
+      setDownloadingCsv(false);
+    }
+  };
+
   const narrative = generateExecutiveNarrative();
 
   return (
@@ -137,15 +152,15 @@ export const ReportsPage: React.FC = () => {
           description="Synthesized multi-stage business briefing with KPI telemetry, anomaly audit trail, and prescriptive initiatives."
           actions={
             <>
-              <a href={reportApi.getKpiSummaryCsvUrl()} download className="inline-flex">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  leftIcon={<Download className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />}
-                >
-                  Download CSV
-                </Button>
-              </a>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleDownloadCsv}
+                isLoading={downloadingCsv}
+                leftIcon={<Download className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />}
+              >
+                Download CSV
+              </Button>
 
               <Button
                 variant="primary"

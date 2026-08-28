@@ -72,7 +72,7 @@ def test_complete_audit_e2e():
             "company_name": "Nonexistent Workspace"
         })
         assert fresh_emp_res.status_code == 400, f"Expected 400 when no workspace exists, got {fresh_emp_res.status_code}"
-        assert "No workspace found" in fresh_emp_res.json()["detail"]
+        assert "Direct employee registration is not permitted" in fresh_emp_res.json()["detail"] or "invitation" in fresh_emp_res.json()["detail"].lower()
         print("  [PASS] Zero-admin employee registration cleanly rejected without creating admin or fake company.")
 
         # Attempt to login with arbitrary/unregistered admin credentials -> MUST FAIL (401)
@@ -148,15 +148,24 @@ def test_complete_audit_e2e():
         print("  [PASS] Wrong password strictly rejected with 401.")
 
         print_banner("2. Testing Employee Role & Strict 403 Portal Segregation")
-        # Register Employee for Company A
+        # Admin A invites Elena
         email_emp = f"elena_{suffix}@apexanalytics.com"
         user_emp = f"elena_{suffix}"
+        inv_res = client.post("/api/v1/company/invite", headers=headers_a, json={
+            "email": email_emp,
+            "recipient_name": "Elena Rostova (Staff A)",
+            "role": "employee"
+        })
+        assert inv_res.status_code == 201
+        invite_token = inv_res.json()["token"]
+
+        # Register Employee for Company A using invitation token
         reg_emp = client.post("/api/v1/auth/register-employee", json={
             "full_name": "Elena Rostova (Staff A)",
             "phone_number": f"+1555{suffix[-4:]}9",
             "email": email_emp,
             "username": user_emp,
-            "company_name": f"Apex Analytics {suffix}",
+            "invitation_token": invite_token,
             "password": "ElenaPassword123!",
             "confirm_password": "ElenaPassword123!"
         })
@@ -258,9 +267,11 @@ def test_complete_audit_e2e():
             "portal_type": "admin"
         })
         assert req_otp.status_code == 200
-        otp_code = req_otp.json()["code_preview"]
-        assert len(otp_code) == 6
-        print(f"  [PASS] Step 1: OTP Code generated successfully ({otp_code}).")
+        assert "code_preview" not in req_otp.json()
+        from app.services.email_service import email_service
+        otp_code = email_service.sent_otps.get(email_a, email_service.last_sent_otp)
+        assert otp_code is not None and len(otp_code) == 6
+        print(f"  [PASS] Step 1: Secure OTP Code generated and dispatched ({otp_code}).")
 
         # Step B: Verify OTP
         ver_otp = client.post("/api/v1/auth/forgot-password/verify", json={

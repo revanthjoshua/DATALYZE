@@ -2,6 +2,7 @@ import os
 import re
 import hashlib
 import shutil
+import logging
 from typing import Dict, Any, List, Optional, Set
 from datetime import datetime, timedelta, timezone
 import pandas as pd
@@ -31,6 +32,9 @@ from app.services.dataset_store import TenantDatasetStore
 from app.services.detection_service import DetectionService
 from app.services.prediction_service import PredictionService
 from app.services.recommendation_service import RecommendationService
+from app.services.storage_service import storage_service
+
+logger = logging.getLogger("datalyze.processing")
 
 
 class DataProcessingService:
@@ -357,16 +361,19 @@ class DataProcessingService:
             detected_profile=detected_profile
         )
 
-        # 8b. Persist dataset to tenant-scoped storage and database
+        # 8b. Persist dataset to tenant-scoped persistent storage and database
         try:
-            storage_dir = os.path.join("storage", "tenants", str(self.tenant_id), "datasets")
-            os.makedirs(storage_dir, exist_ok=True)
-            storage_path = os.path.join(storage_dir, source_filename)
-            df_norm.to_csv(storage_path, index=False)
+            csv_content = df_norm.to_csv(index=False)
+            storage_path = storage_service.save_dataset(
+                tenant_id=self.tenant_id,
+                filename=source_filename,
+                content=csv_content,
+                content_type="text/csv",
+                db=self.db
+            )
             
             # Compute file hash
-            file_bytes = df_norm.to_csv(index=False).encode("utf-8")
-            file_hash = hashlib.sha256(file_bytes).hexdigest()
+            file_hash = hashlib.sha256(csv_content.encode("utf-8")).hexdigest()
 
             self.dataset_repo.record_dataset(
                 filename=source_filename,
@@ -379,17 +386,24 @@ class DataProcessingService:
                 source_type="upload" if not source_filename.startswith("demo_") else "sample"
             )
         except Exception as e:
-            # Non-blocking for persistence errors
-            pass
+            logger.error(f"Failed to persist dataset for tenant #{self.tenant_id}: {e}", exc_info=True)
 
 
         # 9. Automatically Trigger Analytics & Intelligence Engines on the fresh data
         try:
             DetectionService(self.db, self.tenant_id).run_detection_pipeline()
+        except Exception as e:
+            logger.error(f"Detection engine error for tenant #{self.tenant_id}: {e}", exc_info=True)
+
+        try:
             PredictionService(self.db, self.tenant_id).generate_forecasts(horizon_days=7)
+        except Exception as e:
+            logger.error(f"Prediction engine error for tenant #{self.tenant_id}: {e}", exc_info=True)
+
+        try:
             RecommendationService(self.db, self.tenant_id).generate_recommendations()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Recommendation engine error for tenant #{self.tenant_id}: {e}", exc_info=True)
 
         # 10. Prepare Sample Preview
         sample_preview = df_norm.head(8).to_dict(orient="records")
@@ -633,13 +647,11 @@ class DataProcessingService:
         # 1. Purge In-Memory Store
         TenantDatasetStore.clear_dataset(self.tenant_id)
 
-        # 2. Purge On-Disk Storage Files for this Tenant
-        tenant_storage_dir = os.path.join("storage", "tenants", str(self.tenant_id))
-        if os.path.exists(tenant_storage_dir):
-            try:
-                shutil.rmtree(tenant_storage_dir, ignore_errors=True)
-            except Exception:
-                pass
+        # 2. Purge Persistent Storage Files for this Tenant
+        try:
+            storage_service.delete_all_tenant_datasets(self.tenant_id, db=self.db)
+        except Exception as e:
+            logger.warning(f"Failed to purge persistent storage for tenant #{self.tenant_id}: {e}")
 
         # 3. Cascading Database Deletion strictly scoped to self.tenant_id
         try:

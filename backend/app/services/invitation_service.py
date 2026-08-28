@@ -192,8 +192,16 @@ class InvitationService:
 
         # Create active user account strictly using invitation parameters
         full_name = req.full_name.strip() if req.full_name else (inv.full_name or inv.email.split("@")[0].capitalize())
+        raw_username = req.username.strip() if req.username else inv.email.split("@")[0]
+        
+        # Ensure username uniqueness
+        resolved_username = raw_username
+        if self.db.query(User).filter(User.username == resolved_username).first():
+            resolved_username = f"{raw_username}_{int(datetime.now(timezone.utc).timestamp()) % 10000}"
+
         new_user = User(
             email=inv.email,
+            username=resolved_username,
             hashed_password=hash_password(req.password.strip()),
             full_name=full_name,
             role=inv.role.lower(),

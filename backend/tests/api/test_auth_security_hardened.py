@@ -29,8 +29,7 @@ def test_employee_registration_on_zero_admin_fresh_db_is_safely_rejected(db_sess
 
     assert res.status_code == 400
     err_msg = res.json()["detail"]
-    assert "No workspace found" in err_msg
-    assert "Ask your company admin to invite you" in err_msg
+    assert "Direct employee registration is not permitted" in err_msg or "invitation" in err_msg.lower()
 
     # Verify no admin account was auto-created in database
     admin_user = db_session.query(User).filter(User.email == "admin@datalyze.com").first()
@@ -70,13 +69,13 @@ def test_admin_registration_creates_workspace_and_admin(client):
 
 def test_employee_registration_joins_legitimate_workspace(client):
     """
-    Verifies that an Employee can legitimately join an existing workspace by company name.
+    Verifies that an Employee can legitimately join an existing workspace via invitation token.
     """
     suffix = str(int(time.time()))
     comp_name = f"Beta Technologies {suffix}"
     
     # 1. Admin creates Beta Technologies
-    client.post("/api/v1/auth/register-admin", json={
+    adm_res = client.post("/api/v1/auth/register-admin", json={
         "full_name": "Bob Admin",
         "phone_number": f"+1555{suffix[-4:]}2",
         "email": f"bob_{suffix}@betatech.com",
@@ -86,14 +85,24 @@ def test_employee_registration_joins_legitimate_workspace(client):
         "company_name": comp_name,
         "industry": "SaaS / B2B"
     })
+    admin_token = adm_res.json()["access_token"]
 
-    # 2. Employee joins Beta Technologies
+    # Admin invites Charlie
+    inv_res = client.post("/api/v1/company/invite", headers={"Authorization": f"Bearer {admin_token}"}, json={
+        "email": f"charlie_{suffix}@betatech.com",
+        "recipient_name": "Charlie Employee",
+        "role": "employee"
+    })
+    assert inv_res.status_code == 201
+    invite_token = inv_res.json()["token"]
+
+    # 2. Employee joins Beta Technologies via invitation token
     emp_res = client.post("/api/v1/auth/register-employee", json={
         "full_name": "Charlie Employee",
         "phone_number": f"+1555{suffix[-4:]}3",
         "email": f"charlie_{suffix}@betatech.com",
         "username": f"charlie_emp_{suffix}",
-        "company_name": comp_name,
+        "invitation_token": invite_token,
         "password": "CharliePassword123!",
         "confirm_password": "CharliePassword123!"
     })
@@ -106,7 +115,7 @@ def test_employee_registration_joins_legitimate_workspace(client):
 
 def test_employee_registration_rejects_nonexistent_workspace(client):
     """
-    Verifies that employee attempting to join an invalid/nonexistent workspace is rejected.
+    Verifies that employee attempting direct registration without invitation is rejected.
     """
     suffix = str(int(time.time()))
     res = client.post("/api/v1/auth/register-employee", json={
@@ -120,7 +129,7 @@ def test_employee_registration_rejects_nonexistent_workspace(client):
     })
 
     assert res.status_code == 400
-    assert "No workspace found" in res.json()["detail"]
+    assert "Direct employee registration is not permitted" in res.json()["detail"] or "invitation" in res.json()["detail"].lower()
 
 
 def test_duplicate_email_and_username_rejections(client):
@@ -180,7 +189,7 @@ def test_cross_role_login_portal_segregation(client):
     comp_name = f"Delta Global {suffix}"
 
     # Register Admin
-    client.post("/api/v1/auth/register-admin", json={
+    adm_res = client.post("/api/v1/auth/register-admin", json={
         "full_name": "Delta Admin",
         "phone_number": f"+1555{suffix[-4:]}8",
         "email": f"admin_{suffix}@deltaglobal.com",
@@ -189,6 +198,15 @@ def test_cross_role_login_portal_segregation(client):
         "confirm_password": "DeltaPassword123!",
         "company_name": comp_name
     })
+    admin_token = adm_res.json()["access_token"]
+
+    # Admin invites Staff
+    inv_res = client.post("/api/v1/company/invite", headers={"Authorization": f"Bearer {admin_token}"}, json={
+        "email": f"staff_{suffix}@deltaglobal.com",
+        "recipient_name": "Delta Staff",
+        "role": "employee"
+    })
+    invite_token = inv_res.json()["token"]
 
     # Register Employee
     client.post("/api/v1/auth/register-employee", json={
@@ -196,7 +214,7 @@ def test_cross_role_login_portal_segregation(client):
         "phone_number": f"+1555{suffix[-4:]}9",
         "email": f"staff_{suffix}@deltaglobal.com",
         "username": f"delta_staff_{suffix}",
-        "company_name": comp_name,
+        "invitation_token": invite_token,
         "password": "StaffPassword123!",
         "confirm_password": "StaffPassword123!"
     })
@@ -242,7 +260,7 @@ def test_employee_rbac_admin_endpoint_restriction(client):
     comp_name = f"Epsilon Services {suffix}"
 
     # Register Admin & Employee
-    client.post("/api/v1/auth/register-admin", json={
+    adm_res = client.post("/api/v1/auth/register-admin", json={
         "full_name": "Epsilon Admin",
         "phone_number": f"+1555{suffix[-4:]}1",
         "email": f"admin_{suffix}@epsilon.com",
@@ -251,13 +269,21 @@ def test_employee_rbac_admin_endpoint_restriction(client):
         "confirm_password": "EpsilonPass123!",
         "company_name": comp_name
     })
+    admin_token = adm_res.json()["access_token"]
+
+    inv_res = client.post("/api/v1/company/invite", headers={"Authorization": f"Bearer {admin_token}"}, json={
+        "email": f"staff_{suffix}@epsilon.com",
+        "recipient_name": "Epsilon Staff",
+        "role": "employee"
+    })
+    invite_token = inv_res.json()["token"]
 
     emp_res = client.post("/api/v1/auth/register-employee", json={
         "full_name": "Epsilon Staff",
         "phone_number": f"+1555{suffix[-4:]}2",
         "email": f"staff_{suffix}@epsilon.com",
         "username": f"eps_staff_{suffix}",
-        "company_name": comp_name,
+        "invitation_token": invite_token,
         "password": "StaffPassword123!",
         "confirm_password": "StaffPassword123!"
     })
@@ -339,7 +365,10 @@ def test_password_reset_flow_with_old_password_invalidation(client):
         "portal_type": "admin"
     })
     assert req.status_code == 200
-    otp = req.json()["code_preview"]
+    assert "code_preview" not in req.json()
+    from app.services.email_service import email_service
+    otp = email_service.sent_otps.get(email, email_service.last_sent_otp)
+    assert otp is not None
     assert len(otp) == 6
 
     # Step 2: Verify OTP

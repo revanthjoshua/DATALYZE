@@ -282,6 +282,21 @@ export const KpisPage: React.FC = () => {
       ? `${totalMetrics} Monitored Metric${totalMetrics === 1 ? '' : 's'}${criticalMetrics > 0 ? ` • ${criticalMetrics} Needing Attention` : ' • 100% Healthy Baselines'}`
       : 'Metric Engine Ready • Awaiting Data';
 
+  const [exportingCsv, setExportingCsv] = useState(false);
+
+  const handleExportCsv = async () => {
+    try {
+      setExportingCsv(true);
+      const blob = await reportApi.downloadKpiSummaryCsv();
+      reportApi.triggerDownloadBlob(blob, 'datalyze_kpis_summary.csv');
+      toast.success('KPI metrics exported to CSV successfully.', 'Export Complete');
+    } catch (err: any) {
+      toast.error('Failed to export KPI summary to CSV.', 'Export Error');
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in">
       {/* Top Page Header with Dynamic Contextual Eyebrow */}
@@ -292,15 +307,15 @@ export const KpisPage: React.FC = () => {
         description="Formulas, statistical baselines, and multi-dimensional performance tracking across business stages."
         actions={
           <>
-            <a href={reportApi.getKpiSummaryCsvUrl()} download className="inline-flex">
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={<Download className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />}
-              >
-                Export CSV
-              </Button>
-            </a>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportCsv}
+              isLoading={exportingCsv}
+              leftIcon={<Download className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />}
+            >
+              Export CSV
+            </Button>
 
             <Button
               variant="primary"

@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta, timezone
 import random
@@ -12,10 +13,12 @@ from app.services.data_ingestion_service import DataIngestionService
 from app.services.data_processing_service import DataProcessingService
 from app.services.company_service import CompanyService
 from app.services.dataset_store import TenantDatasetStore
+from app.services.storage_service import storage_service
 from app.middleware.auth_middleware import get_current_tenant_id, get_current_user, require_analyst_user
 from app.models.user import User
 from app.models.uploaded_dataset import UploadedDataset
 
+logger = logging.getLogger("datalyze.data")
 
 router = APIRouter(prefix="/data", tags=["Data Ingestion & Pipeline"])
 
@@ -198,6 +201,52 @@ def delete_dataset(
     return processing_service.delete_active_dataset()
 
 
+def _ensure_dataset_loaded(tenant_id: int, db: Session) -> Optional[pd.DataFrame]:
+    """
+    Ensures active dataset is restored into in-memory TenantDatasetStore
+    from persistent storage_service / database across serverless cold starts.
+    """
+    df = TenantDatasetStore.get_dataset(tenant_id)
+    if df is not None:
+        return df
+
+    dataset = (
+        db.query(UploadedDataset)
+        .filter(UploadedDataset.company_id == tenant_id)
+        .order_by(UploadedDataset.created_at.desc())
+        .first()
+    )
+    if not dataset:
+        return None
+
+    file_bytes = None
+    if dataset.storage_path:
+        try:
+            file_bytes = storage_service.get_dataset(
+                tenant_id=tenant_id,
+                storage_key=dataset.storage_path,
+                db=db
+            )
+        except Exception as e:
+            logger.warning(f"Error fetching dataset bytes for tenant #{tenant_id}: {e}")
+
+    if file_bytes:
+        try:
+            ingestion = DataIngestionService(tenant_id=tenant_id)
+            df_restored = ingestion.parse_raw_content(file_bytes, filename=dataset.filename)
+            TenantDatasetStore.set_dataset(
+                tenant_id=tenant_id,
+                df=df_restored,
+                source_filename=dataset.filename,
+                detected_profile=dataset.detected_profile
+            )
+            return df_restored
+        except Exception as e:
+            logger.error(f"Error parsing restored dataset for tenant #{tenant_id}: {e}", exc_info=True)
+
+    return None
+
+
 @router.get("/dataset/info")
 @router.get("/dataset-info")
 def get_dataset_info(
@@ -210,20 +259,8 @@ def get_dataset_info(
     """
     meta = TenantDatasetStore.get_metadata(tenant_id)
     if not meta:
-        # Check if dataset exists in database
-        dataset = db.query(UploadedDataset).filter(UploadedDataset.company_id == tenant_id).order_by(UploadedDataset.created_at.desc()).first()
-        if dataset and dataset.storage_path and os.path.exists(dataset.storage_path):
-            try:
-                df = pd.read_csv(dataset.storage_path)
-                TenantDatasetStore.set_dataset(
-                    tenant_id=tenant_id,
-                    df=df,
-                    source_filename=dataset.filename,
-                    detected_profile=dataset.detected_profile
-                )
-                meta = TenantDatasetStore.get_metadata(tenant_id)
-            except Exception:
-                pass
+        _ensure_dataset_loaded(tenant_id, db)
+        meta = TenantDatasetStore.get_metadata(tenant_id)
 
     if not meta:
         return {"has_dataset": False, "message": "No active dataset currently uploaded."}
@@ -241,33 +278,50 @@ def get_dataset_preview(
     """
     Returns paginated raw data rows from the active dataset.
     """
-    df = TenantDatasetStore.get_dataset(tenant_id)
-    if df is None:
-        dataset = db.query(UploadedDataset).filter(UploadedDataset.company_id == tenant_id).order_by(UploadedDataset.created_at.desc()).first()
-        if dataset and dataset.storage_path and os.path.exists(dataset.storage_path):
-            try:
-                df = pd.read_csv(dataset.storage_path)
-                TenantDatasetStore.set_dataset(
-                    tenant_id=tenant_id,
-                    df=df,
-                    source_filename=dataset.filename,
-                    detected_profile=dataset.detected_profile
-                )
-            except Exception:
-                pass
-
+    _ensure_dataset_loaded(tenant_id, db)
     return TenantDatasetStore.get_preview(tenant_id, limit=limit, offset=offset)
 
+
+@router.get("/dataset/download")
+def download_active_dataset(
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
+):
+    """
+    Downloads the active tenant dataset as a CSV file with authentication.
+    """
+    df = _ensure_dataset_loaded(tenant_id, db)
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail="No active dataset uploaded for this company workspace.")
+
+    dataset = (
+        db.query(UploadedDataset)
+        .filter(UploadedDataset.company_id == tenant_id)
+        .order_by(UploadedDataset.created_at.desc())
+        .first()
+    )
+    filename = dataset.filename if dataset else "datalyze_dataset.csv"
+    if not filename.lower().endswith(".csv"):
+        filename = f"{os.path.splitext(filename)[0]}.csv"
+
+    csv_data = df.to_csv(index=False)
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 @router.post("/dataset/query")
 def query_dataset(
     payload: Dict[str, Any] = Body(...),
-    tenant_id: int = Depends(get_current_tenant_id)
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
 ):
     """
     Executes in-memory filtering, grouping, aggregation, or sorting against the active dataset.
     """
+    _ensure_dataset_loaded(tenant_id, db)
     return TenantDatasetStore.execute_query(
         tenant_id=tenant_id,
         filters=payload.get("filters"),
@@ -284,11 +338,13 @@ def query_dataset(
 def get_column_values(
     col_name: str,
     limit: int = Query(50, ge=1, le=200),
-    tenant_id: int = Depends(get_current_tenant_id)
+    tenant_id: int = Depends(get_current_tenant_id),
+    db: Session = Depends(get_db)
 ):
     """
     Returns distinct values and frequencies for a specific column in the active dataset.
     """
+    _ensure_dataset_loaded(tenant_id, db)
     return TenantDatasetStore.get_column_values(tenant_id, col_name=col_name, limit=limit)
 
 

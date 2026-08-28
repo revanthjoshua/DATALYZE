@@ -14,6 +14,7 @@ from app.models.warehouse_location import WarehouseLocation
 from app.models.uploaded_dataset import UploadedDataset
 from app.models.invitation import Invitation
 from app.models.password_reset_code import PasswordResetCode
+from app.models.dataset_blob import DatasetStorageBlob
 
 __all__ = [
     "Company",
@@ -31,6 +32,7 @@ __all__ = [
     "InventoryItem",
     "WarehouseLocation",
     "UploadedDataset",
+    "DatasetStorageBlob",
     "Invitation",
 ]
 

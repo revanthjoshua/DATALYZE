@@ -156,15 +156,11 @@ export const EmployeeLoginPage: React.FC = () => {
             </Button>
           </form>
 
-          {/* Sign Up as Employee option */}
+          {/* Employee invitation info */}
           <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-col items-center space-y-2.5 text-xs">
-            <Link
-              to="/register/employee"
-              className="font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>Need an Employee account? <strong>Sign Up / Register as Employee →</strong></span>
-            </Link>
+            <p className="text-neutral-500 dark:text-neutral-400 text-center">
+              New team member? Employees join via team invitation links sent by their workspace administrator.
+            </p>
 
             <Link
               to="/login/admin"

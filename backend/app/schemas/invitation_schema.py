@@ -12,6 +12,7 @@ class TeamInviteIn(BaseModel):
 class InvitationOut(BaseModel):
     id: int
     email: str
+    token: Optional[str] = None
     full_name: Optional[str] = None
     role: str
     status: str  # "pending", "accepted", "expired", "revoked"
@@ -37,4 +38,5 @@ class AcceptInviteRequest(BaseModel):
     password: str = Field(..., min_length=6, description="Chosen Password")
     confirm_password: str = Field(..., min_length=6, description="Confirm Password")
     full_name: Optional[str] = Field(default=None, description="Full Name")
+    username: Optional[str] = Field(default=None, description="Username")
     phone_number: Optional[str] = Field(default=None, description="Phone Number")

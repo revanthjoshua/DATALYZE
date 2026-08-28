@@ -37,3 +37,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Runtime tenant datasets & storage
+storage/tenants/
+backend/storage/tenants/
+backend/storage/exports/

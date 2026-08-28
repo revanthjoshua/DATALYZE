@@ -10,6 +10,7 @@ from typing import Tuple, Optional, Any, List
 import pandas as pd
 import openpyxl
 from fastapi import UploadFile
+from app.core.config import settings
 from app.core.exceptions import DataValidationException
 
 
@@ -49,6 +50,39 @@ class _TableHTMLParser(HTMLParser):
             self.current_cell.append(data)
 
 
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitizes user-provided filenames to prevent path traversal attacks,
+    unsafe absolute paths, hidden files, and shell injection characters.
+    """
+    if not filename:
+        return "uploaded_dataset.csv"
+    
+    # 1. Strip directory components (handles both / and \)
+    base = os.path.basename(filename.replace("\\", "/"))
+    base = base.replace("\x00", "").strip()
+    
+    # 2. Prevent directory traversal sequences
+    while ".." in base:
+        base = base.replace("..", "")
+    
+    # 3. Strip leading dots (hidden files) or invalid starting characters
+    base = re.sub(r"^[.\s]+", "", base)
+    
+    # 4. Whitelist safe filename characters
+    name_parts = os.path.splitext(base)
+    name = re.sub(r"[^a-zA-Z0-9_-]", "_", name_parts[0])
+    ext = re.sub(r"[^a-zA-Z0-9.]", "", name_parts[1])
+    
+    if not name:
+        name = "dataset"
+    if not ext:
+        ext = ".csv"
+        
+    sanitized = f"{name}{ext}"
+    return sanitized[:200]
+
+
 class DataIngestionService:
     def __init__(self, tenant_id: int):
         self.tenant_id = tenant_id
@@ -59,7 +93,22 @@ class DataIngestionService:
         JSON, Parquet, or delimited uploaded files into a pandas DataFrame with magic bytes
         detection, multi-engine parsing, HTML/XML fallback, charset autodetection, and robust error recovery.
         """
-        filename = file.filename or "uploaded_dataset.csv"
+        filename = sanitize_filename(file.filename or "uploaded_dataset.csv")
+
+        # Check supported extension
+        allowed_extensions = (
+            ".csv", ".tsv", ".psv", ".txt", ".tab",
+            ".xlsx", ".xls", ".xlsm", ".xlsb", ".xltx",
+            ".docx", ".docm", ".dotx",
+            ".json", ".jsonl", ".parquet", ".pq",
+            ".pdf"
+        )
+        if not filename.lower().endswith(allowed_extensions):
+            raise DataValidationException(
+                f"Unsupported file format '{filename}'. Supported formats: CSV, Excel (.xlsx, .xls, .xlsb), "
+                "Word (.docx), PDF, JSON, TSV, Parquet."
+            )
+
         try:
             await file.seek(0)
         except Exception:
@@ -68,6 +117,13 @@ class DataIngestionService:
         
         if not content or len(content) == 0:
             raise DataValidationException("Uploaded file is empty (0 bytes). Please select a valid data file.")
+
+        # Check maximum file size limit
+        if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
+            max_mb = settings.MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)
+            raise DataValidationException(
+                f"Uploaded file size ({len(content) / (1024 * 1024):.1f}MB) exceeds the maximum allowed limit of {max_mb}MB."
+            )
 
         df = self.parse_raw_content(content, filename)
         return df, filename

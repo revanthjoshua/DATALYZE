@@ -14,7 +14,6 @@ interface AuthContextType {
     company_name?: string;
     industry?: string;
   }) => Promise<void>;
-  resetPassword: (payload: { email: string; new_password: string }) => Promise<void>;
   logout: () => void;
   setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
@@ -93,11 +92,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     handleAuthSuccess(data);
   };
 
-  const resetPassword = async (payload: { email: string; new_password: string }) => {
-    const data = await authApi.resetPassword(payload);
-    handleAuthSuccess(data);
-  };
-
   const logout = () => {
     const theme = localStorage.getItem('datalyze_theme');
     const keysToRemove: string[] = [];
@@ -122,7 +116,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         login,
         register,
-        resetPassword,
         logout,
         setUser,
       }}

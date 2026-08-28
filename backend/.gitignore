@@ -15,3 +15,7 @@ test_e2e_*.db
 .pytest_cache/
 *.log
 .env
+
+# Runtime tenant datasets & storage
+storage/tenants/
+storage/exports/

@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
-import random
+import secrets
+import hashlib
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.models.user import User
@@ -18,10 +19,11 @@ from app.schemas.user_schema import (
     ForgotPasswordConfirm,
 )
 from app.core.security import get_password_hash, verify_password, create_access_token
-from app.core.exceptions import AuthenticationException, DatalyzeException
+from app.core.exceptions import AuthenticationException, DatalyzeException, BadRequestException
 from app.core.logging import log_audit_event
 from app.repositories.user_repository import UserRepository
 from app.repositories.company_repository import CompanyRepository
+from app.services.email_service import email_service
 
 
 class AuthService:
@@ -111,148 +113,73 @@ class AuthService:
         }
 
     def register_employee(self, data: EmployeeRegistrationRequest) -> Dict[str, Any]:
-        user_repo = UserRepository(self.db)
-        clean_email = data.email.lower().strip()
-        clean_username = data.username.lower().strip()
-        clean_phone = data.phone_number.strip().replace(" ", "").replace("-", "")
-
-        # 1. Validation
-        if data.password != data.confirm_password:
-            raise DatalyzeException(status_code=400, detail="Passwords do not match. Please re-enter.")
-
-        if len(data.password) < 6:
-            raise DatalyzeException(status_code=400, detail="Password must be at least 6 characters long.")
-
-        if user_repo.get_by_email_global(clean_email):
-            raise DatalyzeException(status_code=400, detail=f"An account with email '{clean_email}' already exists.")
-
-        if user_repo.get_by_username_global(clean_username):
-            raise DatalyzeException(status_code=400, detail=f"Username '{clean_username}' is already taken. Please choose another.")
-
-        # 2. Resolve existing company workspace strictly
-        target_company: Optional[Company] = None
-
-        # A. Match by company_name if supplied
-        if data.company_name and data.company_name.strip():
-            clean_cname = data.company_name.strip()
-            target_company = (
-                self.db.query(Company)
-                .filter(func.lower(Company.name) == clean_cname.lower(), Company.is_active == True)
-                .first()
-            )
-            if not target_company:
-                target_company = (
-                    self.db.query(Company)
-                    .filter(Company.name.ilike(f"%{clean_cname}%"), Company.is_active == True)
-                    .first()
+        """
+        Employee registration is strictly invitation-driven.
+        If an invitation token is provided, accepts the invitation and returns authenticated TokenOut.
+        Otherwise, direct uninvited registration attempts are safely rejected with 400 Bad Request.
+        """
+        if data.invitation_token:
+            from app.services.invitation_service import InvitationService
+            from app.schemas.invitation_schema import AcceptInviteRequest
+            inv_service = InvitationService(self.db)
+            inv_service.accept_invitation(
+                AcceptInviteRequest(
+                    token=data.invitation_token,
+                    password=data.password,
+                    confirm_password=data.confirm_password,
+                    full_name=data.full_name,
+                    username=data.username,
+                    phone_number=data.phone_number,
                 )
-
-        # B. Match by email corporate domain if company_name not resolved
-        if not target_company and "@" in clean_email:
-            email_domain = clean_email.split("@")[1].lower()
-            generic_domains = {
-                "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", 
-                "icloud.com", "mail.com", "test.com", "example.com"
-            }
-            if email_domain not in generic_domains:
-                # Find company where an active admin or user has this corporate email domain
-                admin_with_domain = (
-                    self.db.query(User)
-                    .filter(
-                        User.email.ilike(f"%@{email_domain}"),
-                        User.is_active == True
-                    )
-                    .first()
-                )
-                if admin_with_domain and admin_with_domain.company_id:
-                    target_company = (
-                        self.db.query(Company)
-                        .filter(Company.id == admin_with_domain.company_id, Company.is_active == True)
-                        .first()
-                    )
-
-        # C. Single active company fallback if system has exactly 1 active workspace
-        if not target_company:
-            all_active = self.db.query(Company).filter(Company.is_active == True).all()
-            if len(all_active) == 1:
-                target_company = all_active[0]
-
-        # If NO workspace exists or none matches, reject registration cleanly
-        if not target_company:
-            log_audit_event(
-                event="auth_register_employee_rejected_no_workspace",
-                details={
-                    "email": clean_email,
-                    "username": clean_username,
-                    "requested_company": data.company_name,
-                },
-                level="WARNING",
-                status="REJECTED"
-            )
-            raise DatalyzeException(
-                status_code=400,
-                detail="No workspace found. Ask your company admin to invite you or register a new company account."
             )
 
-        company_id = target_company.id
+            # Look up newly activated user
+            user_repo = UserRepository(self.db)
+            new_user = user_repo.get_by_email_global(data.email)
+            if not new_user:
+                # If email differed from invitation, find via token
+                inv = inv_service.inv_repo.get_by_token(data.invitation_token.strip())
+                if inv:
+                    new_user = user_repo.get_by_email_global(inv.email)
 
-        # 3. Create Employee User
-        hashed_pw = get_password_hash(data.password)
-        emp_user = User(
-            company_id=company_id,
-            email=clean_email,
-            username=clean_username,
-            phone_number=clean_phone,
-            hashed_password=hashed_pw,
-            full_name=data.full_name.strip(),
-            role=UserRole.EMPLOYEE.value,
-            is_active=True
-        )
-        self.db.add(emp_user)
-        self.db.commit()
-        self.db.refresh(emp_user)
+            if new_user:
+                company = self.db.query(Company).filter(Company.id == new_user.company_id).first()
+                token_payload = {
+                    "sub": str(new_user.id),
+                    "email": new_user.email,
+                    "company_id": new_user.company_id,
+                    "role": new_user.role,
+                }
+                access_token = create_access_token(data=token_payload)
+                return {
+                    "access_token": access_token,
+                    "token_type": "bearer",
+                    "user": new_user,
+                    "company": {
+                        "id": company.id if company else 0,
+                        "name": company.name if company else "",
+                        "industry": company.industry if company else "",
+                        "currency": company.currency if company else "USD",
+                        "timezone": company.timezone if company else "UTC",
+                    }
+                }
 
         log_audit_event(
-            event="auth_register_employee_success",
-            details={
-                "user_id": emp_user.id,
-                "email": clean_email,
-                "username": clean_username,
-                "company_id": company_id,
-                "company_name": target_company.name,
-                "role": emp_user.role,
-            },
-            level="INFO",
-            status="SUCCESS"
+            event="auth_register_employee_direct_attempt_blocked",
+            details={"email": data.email, "company_name": data.company_name},
+            level="WARNING",
+            status="BLOCKED"
         )
-
-        token_payload = {
-            "sub": str(emp_user.id),
-            "email": emp_user.email,
-            "company_id": company_id,
-            "role": emp_user.role,
-        }
-        access_token = create_access_token(data=token_payload)
-
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": emp_user,
-            "company": {
-                "id": target_company.id,
-                "name": target_company.name,
-                "industry": target_company.industry,
-                "currency": target_company.currency,
-                "timezone": target_company.timezone,
-            }
-        }
+        raise BadRequestException(
+            "Direct employee registration is not permitted. Please join using the team invitation link sent by your workspace administrator."
+        )
 
     def register_company_and_admin(self, user_in: UserCreate) -> Dict[str, Any]:
         base_username = user_in.email.split('@')[0]
         user_repo = UserRepository(self.db)
         resolved_username = base_username
         if user_repo.get_by_username_global(resolved_username):
-            resolved_username = f"{base_username}_{random.randint(1000, 9999)}"
+            resolved_username = f"{base_username}_{secrets.randbelow(9000) + 1000}"
 
         return self.register_admin(
             AdminRegistrationRequest(
@@ -406,21 +333,37 @@ class AuthService:
                 detail="Account is registered as an Administrator. Please use the Admin Forgot Password page."
             )
 
-        # Generate 6-digit verification code
-        code = str(random.randint(100000, 999999))
+        # 1. Invalidate any prior unused reset codes for this user
+        self.db.query(PasswordResetCode).filter(
+            PasswordResetCode.user_id == user.id,
+            PasswordResetCode.is_used == False
+        ).update({"is_used": True})
+
+        # 2. Cryptographically secure 6-digit verification code generation
+        code = "".join(secrets.choice("0123456789") for _ in range(6))
+        code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
 
+        # 3. Store hashed code in database
         reset_code = PasswordResetCode(
             user_id=user.id,
             target=raw_ident,
-            code=code,
+            code=code_hash,
             expires_at=expires_at,
             is_used=False
         )
         self.db.add(reset_code)
         self.db.commit()
 
-        # Mask target for privacy
+        # 4. Dispatch verification code via Resend transactional email
+        email_service.send_password_reset_otp_email(
+            to_email=user.email,
+            recipient_name=user.full_name,
+            otp_code=code,
+            expires_in_minutes=15
+        )
+
+        # 5. Mask target for privacy
         if "@" in raw_ident:
             parts = raw_ident.split("@")
             masked = f"{parts[0][:2]}***@{parts[1]}"
@@ -438,7 +381,6 @@ class AuthService:
             "success": True,
             "message": f"Verification code sent to {masked}.",
             "target": masked,
-            "code_preview": code,  # Included for immediate UI verification feedback
             "expires_in_minutes": 15
         }
 
@@ -450,12 +392,15 @@ class AuthService:
         if not user:
             raise DatalyzeException(status_code=404, detail="User account not found.")
 
-        # Find latest active code
+        # Compute hash of submitted code
+        code_hash = hashlib.sha256(req.code.strip().encode("utf-8")).hexdigest()
+
+        # Find matching unused code record
         code_record = (
             self.db.query(PasswordResetCode)
             .filter(
                 PasswordResetCode.user_id == user.id,
-                PasswordResetCode.code == req.code.strip(),
+                PasswordResetCode.code == code_hash,
                 PasswordResetCode.is_used == False
             )
             .order_by(PasswordResetCode.created_at.desc())
@@ -512,11 +457,13 @@ class AuthService:
         if len(req.new_password) < 6:
             raise DatalyzeException(status_code=400, detail="Password must be at least 6 characters long.")
 
+        code_hash = hashlib.sha256(req.code.strip().encode("utf-8")).hexdigest()
+
         code_record = (
             self.db.query(PasswordResetCode)
             .filter(
                 PasswordResetCode.user_id == user.id,
-                PasswordResetCode.code == req.code.strip(),
+                PasswordResetCode.code == code_hash,
                 PasswordResetCode.is_used == False
             )
             .order_by(PasswordResetCode.created_at.desc())
@@ -546,7 +493,7 @@ class AuthService:
             )
             raise DatalyzeException(status_code=400, detail="Verification code has expired.")
 
-        # Update password
+        # Update password with secure PBKDF2 hash and mark code as used
         user.hashed_password = get_password_hash(req.new_password)
         code_record.is_used = True
         self.db.commit()
@@ -561,45 +508,6 @@ class AuthService:
         return {
             "success": True,
             "message": "Password has been successfully updated. Please sign in with your new credentials."
-        }
-
-    def reset_password(self, reset_data: PasswordResetRequest) -> Dict[str, Any]:
-        """
-        Direct password update for authenticated sessions or legacy reset tests.
-        """
-        user_repo = UserRepository(self.db)
-        clean_email = reset_data.email.lower().strip()
-        user = user_repo.get_by_email_global(clean_email)
-        if not user:
-            raise DatalyzeException(status_code=404, detail="User account not found.")
-
-        if len(reset_data.new_password) < 6:
-            raise DatalyzeException(status_code=400, detail="Password must be at least 6 characters long.")
-
-        user.hashed_password = get_password_hash(reset_data.new_password)
-        self.db.commit()
-        self.db.refresh(user)
-
-        log_audit_event(
-            event="auth_direct_password_reset_success",
-            details={"user_id": user.id, "email": user.email},
-            level="INFO",
-            status="SUCCESS"
-        )
-
-        token_payload = {
-            "sub": str(user.id),
-            "email": user.email,
-            "company_id": user.company_id,
-            "role": user.role,
-        }
-        access_token = create_access_token(data=token_payload)
-
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": user,
-            "company": None
         }
 
     def update_user_profile(

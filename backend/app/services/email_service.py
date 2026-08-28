@@ -18,6 +18,8 @@ class EmailService:
         self.api_key = settings.RESEND_API_KEY
         self.from_email = settings.RESEND_FROM_EMAIL
         self.frontend_url = settings.FRONTEND_URL.rstrip("/")
+        self.last_sent_otp: Optional[str] = None
+        self.sent_otps: Dict[str, str] = {}
         if self.api_key:
             resend.api_key = self.api_key
 
@@ -275,12 +277,180 @@ If you did not expect this invitation, you can safely ignore this email.
                 level="ERROR",
                 status="FAILURE"
             )
-            if "testing emails to your own email address" in err_str.lower():
-                raise DataValidationException(
-                    f"Resend Sandbox Notice: On the free tier (onboarding@resend.dev), invitations can only be delivered to your registered email (revanthjoshua77@gmail.com). To send to '{to_email}', please verify a custom domain at resend.com/domains."
-                )
-            raise DataValidationException(f"Failed to deliver invitation email via Resend: {err_str}")
+            return {
+                "success": False,
+                "error": err_str,
+                "to": to_email,
+                "accept_url": accept_url
+            }
+
+    def send_password_reset_otp_email(
+        self,
+        to_email: str,
+        recipient_name: str,
+        otp_code: str,
+        expires_in_minutes: int = 15,
+    ) -> Dict[str, Any]:
+        """
+        Sends a branded password reset verification code email via Resend.
+        """
+        if not self.api_key:
+            logger.warning("Resend API key is not configured. Password reset email skipped.")
+            return {"success": False, "message": "Resend API key not configured"}
+
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Your Datalyze Password</title>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #FAF8F5;
+      color: #1A1A1A;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }}
+    .wrapper {{
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #FFFFFF;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      border: 1px solid #EAE5DE;
+    }}
+    .header {{
+      background: linear-gradient(135deg, #1C1917 0%, #292524 100%);
+      padding: 32px 40px;
+      text-align: center;
+    }}
+    .logo-text {{
+      color: #FFFFFF;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin: 0;
+    }}
+    .tagline {{
+      color: #A8A29E;
+      font-size: 13px;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }}
+    .content {{
+      padding: 40px;
+    }}
+    .otp-card {{
+      background-color: #F8FAFC;
+      border: 2px dashed #CBD5E1;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+      margin: 28px 0;
+    }}
+    .otp-code {{
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: #0F172A;
+      margin: 8px 0;
+    }}
+    .footer {{
+      background-color: #FAF8F5;
+      border-top: 1px solid #EAE5DE;
+      padding: 24px 40px;
+      text-align: center;
+      font-size: 12px;
+      color: #78716C;
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1 class="logo-text">DATALYZE</h1>
+      <div class="tagline">Decision Intelligence Platform</div>
+    </div>
+    <div class="content">
+      <h2 style="font-size: 20px; font-weight: 700; margin-top: 0; color: #1C1917;">Password Reset Verification</h2>
+      <p style="font-size: 15px; line-height: 1.6; color: #44403C;">
+        Hello <strong>{recipient_name or 'there'}</strong>,
+      </p>
+      <p style="font-size: 15px; line-height: 1.6; color: #44403C;">
+        We received a request to reset your Datalyze password. Use the single-use verification code below to authorize your password change:
+      </p>
+      <div class="otp-card">
+        <div style="font-size: 12px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Your 6-Digit Verification Code</div>
+        <div class="otp-code">{otp_code}</div>
+        <div style="font-size: 13px; color: #64748B;">Expires in {expires_in_minutes} minutes</div>
+      </div>
+      <p style="font-size: 14px; line-height: 1.6; color: #78716C;">
+        If you did not request this password reset, please ignore this message. Your password will remain unchanged and your account remains secure.
+      </p>
+    </div>
+    <div class="footer">
+      &copy; Datalyze Inc. Secure Enterprise Decision Intelligence.
+    </div>
+  </div>
+</body>
+</html>
+        """
+
+        text_content = f"""
+DATALYZE - Password Reset Verification
+
+Hello {recipient_name or 'there'},
+
+We received a request to reset your Datalyze password. Your single-use 6-digit verification code is:
+
+{otp_code}
+
+This code will expire in {expires_in_minutes} minutes.
+
+If you did not request a password reset, you can safely ignore this email.
+"""
+
+        self.last_sent_otp = otp_code
+        self.sent_otps[to_email] = otp_code
+
+        try:
+            resend.api_key = self.api_key
+            params = {
+                "from": self.from_email,
+                "to": [to_email],
+                "subject": f"Your Datalyze Verification Code: {otp_code}",
+                "html": html_content,
+                "text": text_content,
+            }
+            logger.info(f"Sending password reset OTP email to {to_email} via Resend...")
+            response = resend.Emails.send(params)
+            email_id = response.get("id") if isinstance(response, dict) else getattr(response, "id", str(response))
+            logger.info(f"Resend OTP email sent successfully! ID: {email_id}")
+            log_audit_event(
+                event="resend_password_reset_email_sent",
+                details={"to": to_email, "email_id": email_id},
+                level="INFO",
+                status="SUCCESS"
+            )
+            return {"success": True, "email_id": email_id, "to": to_email}
+        except Exception as exc:
+            err_str = str(exc)
+            logger.error(f"Resend API error sending OTP email to {to_email}: {err_str}", exc_info=True)
+            log_audit_event(
+                event="resend_password_reset_email_failed",
+                details={"to": to_email, "error": err_str},
+                level="ERROR",
+                status="FAILURE"
+            )
+            return {"success": False, "error": err_str}
 
 
 
 email_service = EmailService()
+

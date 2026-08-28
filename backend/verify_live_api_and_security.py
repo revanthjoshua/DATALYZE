@@ -181,7 +181,10 @@ def test_live_server():
         "portal_type": "admin"
     })
     assert otp_req.status_code == 200
-    otp_code = otp_req.json()["code_preview"]
+    assert "code_preview" not in otp_req.json()
+    from app.services.email_service import email_service
+    otp_code = email_service.sent_otps.get(admin_email, email_service.last_sent_otp)
+    assert otp_code is not None and len(otp_code) == 6
 
     otp_ver = client.post("/auth/forgot-password/verify", json={
         "identifier": admin_email,

@@ -36,6 +36,7 @@ class EmployeeRegistrationRequest(BaseModel):
     password: str = Field(..., min_length=6, description="Password")
     confirm_password: str = Field(..., min_length=6, description="Confirm Password")
     company_name: Optional[str] = None
+    invitation_token: Optional[str] = None
 
 
 

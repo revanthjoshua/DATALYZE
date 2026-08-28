@@ -86,7 +86,6 @@ export const authApi = {
     success: boolean;
     message: string;
     target: string;
-    code_preview?: string;
     expires_in_minutes: number;
   }> => {
     const res = await axiosClient.post('/auth/forgot-password/request', payload);
@@ -107,11 +106,6 @@ export const authApi = {
     message: string;
   }> => {
     const res = await axiosClient.post('/auth/forgot-password/confirm', payload);
-    return res.data;
-  },
-
-  resetPassword: async (payload: { email: string; new_password: string }): Promise<AuthResponse> => {
-    const res = await axiosClient.post<AuthResponse>('/auth/reset-password', payload);
     return res.data;
   },
 

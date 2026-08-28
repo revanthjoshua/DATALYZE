@@ -17,7 +17,6 @@ RATE_LIMIT_RULES: Dict[str, Tuple[int, int]] = {
     "/api/v1/auth/forgot-password/request": (60, 20),
     "/api/v1/auth/forgot-password/verify": (60, 30),
     "/api/v1/auth/forgot-password/confirm": (60, 30),
-    "/api/v1/auth/reset-password": (60, 20),
     "/api/v1/auth/invite/verify": (60, 60),
     "/api/v1/auth/invite/accept": (60, 20),
     "/api/v1/company/invite": (60, 30),

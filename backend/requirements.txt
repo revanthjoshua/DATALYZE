@@ -18,3 +18,5 @@ email-validator>=2.1.0
 psycopg2-binary==2.9.12
 resend==2.42.0
 alembic==1.19.1
+pyarrow>=14.0.0
+pyxlsb>=1.0.10

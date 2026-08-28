@@ -35,7 +35,6 @@ export const EmployeeForgotPasswordPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [targetMasked, setTargetMasked] = useState('');
-  const [codePreview, setCodePreview] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +57,6 @@ export const EmployeeForgotPasswordPage: React.FC = () => {
         portal_type: 'employee',
       });
       setTargetMasked(res.target || identifier);
-      setCodePreview(res.code_preview || null);
       setStep(2);
       toast.success(res.message, 'Verification Code Sent');
     } catch (err: any) {
@@ -206,16 +204,6 @@ export const EmployeeForgotPasswordPage: React.FC = () => {
           {/* STEP 2: Verify Code */}
           {step === 2 && (
             <form onSubmit={handleVerifySubmit} className="space-y-4">
-              {codePreview && (
-                <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-900 dark:text-blue-200 space-y-1">
-                  <p className="font-semibold">Demo Verification Code:</p>
-                  <p className="font-mono text-base font-extrabold tracking-widest text-blue-700 dark:text-blue-300">
-                    {codePreview}
-                  </p>
-                  <p className="text-[10px] text-neutral-400">Valid for 15 minutes</p>
-                </div>
-              )}
-
               <FormField label="6-Digit Verification Code" required error={fieldErrors.code}>
                 <Input
                   type="text"

@@ -3,7 +3,7 @@ import pytest
 
 def test_admin_and_employee_role_authentication_separation(client):
     # Setup: Explicitly register test Admin and Employee accounts
-    client.post("/api/v1/auth/register-admin", json={
+    admin_reg = client.post("/api/v1/auth/register-admin", json={
         "full_name": "Admin Leader",
         "phone_number": "+15550100",
         "email": "admin@datalyze.com",
@@ -13,13 +13,23 @@ def test_admin_and_employee_role_authentication_separation(client):
         "company_name": "Acme Global Workspace",
         "industry": "Retail/E-commerce"
     })
+    assert admin_reg.status_code == 201
+    admin_token = admin_reg.json()["access_token"]
+
+    invite_res = client.post("/api/v1/company/invite", headers={"Authorization": f"Bearer {admin_token}"}, json={
+        "email": "employee@datalyze.com",
+        "recipient_name": "Jordan Reed",
+        "role": "employee"
+    })
+    assert invite_res.status_code == 201
+    invite_token = invite_res.json()["token"]
 
     client.post("/api/v1/auth/register-employee", json={
         "full_name": "Jordan Reed",
         "phone_number": "+15550199",
         "email": "employee@datalyze.com",
         "username": "employee",
-        "company_name": "Acme Global Workspace",
+        "invitation_token": invite_token,
         "password": "Employee123!",
         "confirm_password": "Employee123!"
     })
@@ -127,13 +137,23 @@ def test_admin_and_employee_registration_and_password_reset(client):
     assert dup_res.status_code == 400
     assert "already taken" in dup_res.json()["detail"]
 
-    # 2. Register new Employee with Full Name, Phone, Email, Username, Password
+    # 2. Login as Admin and Invite Employee
+    admin_token = new_admin_res.json()["access_token"]
+    invite_res = client.post("/api/v1/company/invite", headers={"Authorization": f"Bearer {admin_token}"}, json={
+        "email": "kyle.reese@datalyze.com",
+        "recipient_name": "Kyle Reese (Staff)",
+        "role": "employee"
+    })
+    assert invite_res.status_code == 201
+    invite_token = invite_res.json()["token"]
+
+    # Register new Employee using Invitation Token
     new_emp_res = client.post("/api/v1/auth/register-employee", json={
         "full_name": "Kyle Reese (Staff)",
         "phone_number": "+1555987654",
         "email": "kyle.reese@datalyze.com",
         "username": "kyle_reese",
-        "company_name": "Cyberdyne Systems",
+        "invitation_token": invite_token,
         "password": "EmployeeSecret123!",
         "confirm_password": "EmployeeSecret123!"
     })
@@ -150,7 +170,10 @@ def test_admin_and_employee_registration_and_password_reset(client):
     assert req_res.status_code == 200
     req_data = req_res.json()
     assert req_data["success"] is True
-    code = req_data["code_preview"]
+    assert "code_preview" not in req_data
+    from app.services.email_service import email_service
+    code = email_service.sent_otps.get("kyle.reese@datalyze.com", email_service.last_sent_otp)
+    assert code is not None
     assert len(code) == 6
 
     # Step B: Verify code

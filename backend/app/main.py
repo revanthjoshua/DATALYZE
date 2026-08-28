@@ -9,14 +9,11 @@ from app.middleware.tenant_middleware import TenantScopingMiddleware
 from app.middleware.request_id_middleware import RequestIDMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware
 
-# Ensure tables are created eagerly for both app and test client runs
-Base.metadata.create_all(bind=engine)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database tables on startup
-    Base.metadata.create_all(bind=engine)
+    # In local SQLite development only, ensure tables exist if not running Alembic migrations
+    if settings.DATABASE_URL.startswith("sqlite") and settings.ENVIRONMENT.lower() != "production":
+        Base.metadata.create_all(bind=engine)
     
     yield
 
