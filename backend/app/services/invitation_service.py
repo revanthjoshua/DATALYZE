@@ -80,7 +80,7 @@ class InvitationService:
 
         # 4. Dispatch Email via Resend
         try:
-            email_service.send_invitation_email(
+            delivery = email_service.send_invitation_email(
                 to_email=clean_email,
                 recipient_name=invitation.full_name or clean_email.split("@")[0].capitalize(),
                 company_name=company_name,
@@ -88,6 +88,10 @@ class InvitationService:
                 role=clean_role,
                 token=token
             )
+            if not delivery.get("success"):
+                raise DataValidationException(
+                    "The invitation email could not be delivered. Check the Resend sender domain and production configuration, then try again."
+                )
         except Exception as exc:
             # If email fails, rollback creation to avoid ghost invitations
             self.db.delete(invitation)
@@ -258,13 +262,16 @@ class InvitationService:
         inviter_name = admin_user.full_name or "Workspace Admin"
 
         # Generate new token and refresh expiry
+        previous_token = inv.token
+        previous_expires_at = inv.expires_at
+        previous_status = inv.status
         inv.token = secrets.token_urlsafe(32)
         inv.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
         inv.status = "pending"
         self.db.commit()
         self.db.refresh(inv)
 
-        email_service.send_invitation_email(
+        delivery = email_service.send_invitation_email(
             to_email=inv.email,
             recipient_name=inv.full_name or inv.email.split("@")[0].capitalize(),
             company_name=company_name,
@@ -272,6 +279,14 @@ class InvitationService:
             role=inv.role,
             token=inv.token
         )
+        if not delivery.get("success"):
+            inv.token = previous_token
+            inv.expires_at = previous_expires_at
+            inv.status = previous_status
+            self.db.commit()
+            raise DataValidationException(
+                "The invitation email could not be delivered. Check the Resend sender domain and production configuration, then try again."
+            )
 
         log_audit_event(
             event="team_invitation_resent",
@@ -309,3 +324,4 @@ class InvitationService:
 
     def list_invitations(self, status: Optional[str] = None) -> List[Invitation]:
         return self.inv_repo.list_by_company(status=status)
+

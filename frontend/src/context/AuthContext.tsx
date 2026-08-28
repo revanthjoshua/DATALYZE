@@ -42,8 +42,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           setUser(JSON.parse(savedUser));
           setToken(savedToken);
-          
-          // Background validation
+
+          // A cached session is enough to render immediately. Validate it in the
+          // background so a serverless cold start cannot freeze the whole app.
+          setLoading(false);
           const data = await authApi.getMe();
           if (data && data.user) {
             setUser(data.user);
@@ -132,3 +134,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

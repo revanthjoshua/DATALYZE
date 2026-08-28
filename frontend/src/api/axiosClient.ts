@@ -14,6 +14,8 @@ function getApiBaseUrl(): string {
 
 const axiosClient = axios.create({
   baseURL: getApiBaseUrl(),
+  // Never leave the UI waiting indefinitely for a cold or unhealthy deployment.
+  timeout: 15000,
 });
 
 // Request interceptor: Attach JWT token automatically & handle FormData boundary
@@ -53,3 +55,4 @@ axiosClient.interceptors.response.use(
 );
 
 export default axiosClient;
+
