@@ -94,7 +94,8 @@ def update_current_user_profile(
         email=payload.email,
         username=payload.username,
         phone_number=payload.phone_number,
-        password=payload.password
+        password=payload.password,
+        current_password=payload.current_password
     )
     company = db.query(Company).filter(Company.id == updated_user.company_id).first()
     return {
@@ -120,4 +121,5 @@ def accept_invitation(req: AcceptInviteRequest, db: Session = Depends(get_db)):
     """
     service = InvitationService(db)
     return service.accept_invitation(req)
+
 
