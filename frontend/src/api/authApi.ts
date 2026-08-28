@@ -138,8 +138,10 @@ export const authApi = {
     username?: string;
     phone_number?: string;
     password?: string;
+    current_password?: string;
   }): Promise<{ user: User; company: Company | null }> => {
     const res = await axiosClient.put<{ user: User; company: Company | null }>('/auth/me', payload);
     return res.data;
   },
 };
+
