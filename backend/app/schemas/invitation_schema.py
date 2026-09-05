@@ -7,6 +7,7 @@ class TeamInviteIn(BaseModel):
     email: EmailStr
     role: str = Field(default="Employee", description="Role to assign: Employee, Analyst, Admin")
     full_name: Optional[str] = Field(default=None, description="Colleague's Full Name")
+    recipient_name: Optional[str] = Field(default=None, description="Colleague's Full Name alias")
 
 
 class InvitationOut(BaseModel):

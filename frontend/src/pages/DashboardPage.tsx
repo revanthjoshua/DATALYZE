@@ -97,9 +97,9 @@ export const DashboardPage: React.FC = () => {
 
       const [kpiData, detData, recData, invData, infoData, prevData] =
         await Promise.all([
-          kpiApi.getDashboardSummary(),
-          detectionApi.getDetections(),
-          recommendationApi.getRecommendations(),
+          kpiApi.getDashboardSummary().catch(() => []),
+          detectionApi.getDetections().catch(() => []),
+          recommendationApi.getRecommendations().catch(() => []),
           inventoryApi.getInventorySummary().catch(() => null),
           dataApi.getDatasetInfo().catch(() => null),
           dataApi.getDatasetPreview(10, 0).catch(() => null),

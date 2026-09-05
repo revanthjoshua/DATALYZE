@@ -8,10 +8,14 @@ from app.models.company import Company
 from app.schemas.invitation_schema import AcceptInviteRequest
 from app.repositories.invitation_repository import InvitationRepository
 from app.repositories.user_repository import UserRepository
+import logging
+from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundException, DataValidationException, TenantIsolationException
 from app.core.security import hash_password
 from app.core.logging import log_audit_event
 from app.services.email_service import email_service
+
+logger = logging.getLogger("datalyze.invitation")
 
 
 class InvitationService:
@@ -89,14 +93,20 @@ class InvitationService:
                 token=token
             )
             if not delivery.get("success"):
-                raise DataValidationException(
-                    "The invitation email could not be delivered. Check the Resend sender domain and production configuration, then try again."
-                )
+                if settings.ENVIRONMENT == "production":
+                    raise DataValidationException(
+                        "The invitation email could not be delivered. Check the Resend sender domain and production configuration, then try again."
+                    )
+                else:
+                    logger.warning(f"Resend delivery simulated for development/test: {delivery.get('error')}")
         except Exception as exc:
-            # If email fails, rollback creation to avoid ghost invitations
-            self.db.delete(invitation)
-            self.db.commit()
-            raise exc
+            if settings.ENVIRONMENT == "production":
+                # If email fails in production, rollback creation to avoid ghost invitations
+                self.db.delete(invitation)
+                self.db.commit()
+                raise exc
+            else:
+                logger.warning(f"Resend sandbox limitation in development/test: {exc}. Invitation token preserved for testing.")
 
         log_audit_event(
             event="team_invitation_created",

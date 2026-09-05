@@ -41,7 +41,9 @@ axiosClient.interceptors.response.use(
     const isAuthEndpoint =
       url.includes('/auth/login') ||
       url.includes('/auth/register') ||
-      url.includes('/auth/forgot-password');
+      url.includes('/auth/forgot-password') ||
+      url.includes('/auth/invite') ||
+      url.includes('/auth/accept-invite');
 
     if (error.response && error.response.status === 401 && !isAuthEndpoint) {
       localStorage.removeItem('datalyze_token');

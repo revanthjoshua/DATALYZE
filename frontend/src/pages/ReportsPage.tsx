@@ -49,16 +49,21 @@ export const ReportsPage: React.FC = () => {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const [kpiData, detData, recData, predData] = await Promise.all([
-        kpiApi.getDashboardSummary(),
-        detectionApi.getDetections(),
-        recommendationApi.getRecommendations(),
-        predictionApi.getPredictions(1).catch(() => []),
+      const [kpiData, detData, recData] = await Promise.all([
+        kpiApi.getDashboardSummary().catch(() => []),
+        detectionApi.getDetections().catch(() => []),
+        recommendationApi.getRecommendations().catch(() => []),
       ]);
       setKpis(kpiData);
       setDetections(detData);
       setRecommendations(recData);
-      setPredictions(predData);
+
+      if (kpiData && kpiData.length > 0) {
+        const predData = await predictionApi.getPredictions(kpiData[0].id).catch(() => []);
+        setPredictions(predData);
+      } else {
+        setPredictions([]);
+      }
     } catch (err) {
       console.error('Failed to load report data', err);
       setErrorMsg('Failed to compile executive briefing.');

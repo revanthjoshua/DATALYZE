@@ -92,9 +92,10 @@ export const NoahChatWidget: React.FC<NoahChatWidgetProps> = ({
       };
       setMessages((prev) => [...prev, noahMsg]);
     } catch (err: any) {
+      const serverDetail = err.response?.data?.detail;
       const errorMsg: Message = {
         sender: 'noah',
-        text: 'I encountered an error retrieving data. Please ensure data has been uploaded to the pipeline or try again.',
+        text: serverDetail || 'I encountered an error retrieving data. Please ensure data has been uploaded to the pipeline or try again.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMsg]);

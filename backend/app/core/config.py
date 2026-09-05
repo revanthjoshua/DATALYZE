@@ -77,10 +77,14 @@ class Settings(BaseSettings):
         elif isinstance(v, list):
             origins = [str(item).strip() for item in v if str(item).strip()]
         
-        default_dev = ["http://localhost:5173", "http://127.0.0.1:5173"]
-        for dev_url in default_dev:
-            if dev_url not in origins:
-                origins.append(dev_url)
+        default_origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "https://datalyze-y9n8.vercel.app",
+        ]
+        for def_url in default_origins:
+            if def_url not in origins:
+                origins.append(def_url)
         return origins
 
     @field_validator("SECRET_KEY")

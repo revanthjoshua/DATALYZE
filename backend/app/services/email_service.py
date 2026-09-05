@@ -23,6 +23,14 @@ class EmailService:
         if self.api_key:
             resend.api_key = self.api_key
 
+    def _get_formatted_from(self) -> str:
+        sender = (self.from_email or "Datalyze <onboarding@resend.dev>").strip()
+        if "@" in sender and "<" not in sender and " " in sender:
+            parts = sender.rsplit(" ", 1)
+            if "@" in parts[1]:
+                return f"{parts[0]} <{parts[1]}>"
+        return sender
+
     def send_invitation_email(
         self,
         to_email: str,
@@ -235,14 +243,15 @@ If you did not expect this invitation, you can safely ignore this email.
 
         try:
             resend.api_key = self.api_key
+            sender = self._get_formatted_from()
             params = {
-                "from": self.from_email,
+                "from": sender,
                 "to": [to_email],
                 "subject": f"You're invited to join {company_name} on Datalyze",
                 "html": html_content,
                 "text": text_content,
             }
-            logger.info(f"Sending invitation email to {to_email} via Resend from {self.from_email}...")
+            logger.info(f"Sending invitation email to {to_email} via Resend from {sender}...")
             response = resend.Emails.send(params)
 
             # Response is typically a dictionary like {'id': '...'}
@@ -421,14 +430,15 @@ If you did not request a password reset, you can safely ignore this email.
 
         try:
             resend.api_key = self.api_key
+            sender = self._get_formatted_from()
             params = {
-                "from": self.from_email,
+                "from": sender,
                 "to": [to_email],
                 "subject": f"Your Datalyze Verification Code: {otp_code}",
                 "html": html_content,
                 "text": text_content,
             }
-            logger.info(f"Sending password reset OTP email to {to_email} via Resend...")
+            logger.info(f"Sending password reset OTP email to {to_email} via Resend from {sender}...")
             response = resend.Emails.send(params)
             email_id = response.get("id") if isinstance(response, dict) else getattr(response, "id", str(response))
             logger.info(f"Resend OTP email sent successfully! ID: {email_id}")

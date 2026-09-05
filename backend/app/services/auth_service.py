@@ -18,12 +18,16 @@ from app.schemas.user_schema import (
     ForgotPasswordVerify,
     ForgotPasswordConfirm,
 )
+import logging
+from app.core.config import settings
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.exceptions import AuthenticationException, DatalyzeException, BadRequestException
 from app.core.logging import log_audit_event
 from app.repositories.user_repository import UserRepository
 from app.repositories.company_repository import CompanyRepository
 from app.services.email_service import email_service
+
+logger = logging.getLogger("datalyze.auth")
 
 
 class AuthService:
@@ -363,12 +367,15 @@ class AuthService:
             expires_in_minutes=15
         )
         if not delivery.get("success"):
-            self.db.delete(reset_code)
-            self.db.commit()
-            raise DatalyzeException(
-                status_code=502,
-                detail="The verification email could not be delivered. Check the Resend production configuration and try again."
-            )
+            if settings.ENVIRONMENT == "production":
+                self.db.delete(reset_code)
+                self.db.commit()
+                raise DatalyzeException(
+                    status_code=502,
+                    detail="The verification email could not be delivered. Check the Resend production configuration and try again."
+                )
+            else:
+                logger.warning(f"Resend OTP delivery simulated for development/test: {delivery.get('error')}")
 
         # 5. Mask target for privacy
         if "@" in raw_ident:

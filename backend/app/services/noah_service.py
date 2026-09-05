@@ -68,6 +68,14 @@ class NoahService:
         structured_data: Dict[str, Any] = {}
 
         dataset_meta = TenantDatasetStore.get_metadata(self.tenant_id)
+        if not dataset_meta:
+            try:
+                from app.api.v1.data_routes import _ensure_dataset_loaded
+                _ensure_dataset_loaded(self.tenant_id, self.db)
+                dataset_meta = TenantDatasetStore.get_metadata(self.tenant_id)
+            except Exception:
+                pass
+
         dataset_analysis = TenantDatasetStore.analyze_query(self.tenant_id, question)
         has_active_dataset = dataset_meta is not None and dataset_meta.get("row_count", 0) > 0
         uploaded_cols = dataset_meta.get("columns", []) if dataset_meta else []

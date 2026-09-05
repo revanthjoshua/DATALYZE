@@ -356,15 +356,20 @@ export const DataPage: React.FC = () => {
   };
 
   const handleDownloadCsv = async () => {
-    const blob = await dataApi.downloadDataset();
-const url = window.URL.createObjectURL(blob);
-const link = document.createElement('a');
-link.href = url;
-link.download = 'datalyze_dataset.csv';
-document.body.appendChild(link);
-link.click();
-link.remove();
-window.URL.revokeObjectURL(url);
+    try {
+      const blob = await dataApi.downloadDataset();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = datasetInfo?.filename || 'datalyze_dataset.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Active dataset downloaded successfully.', 'Export Complete');
+    } catch (err: any) {
+      toast.error('Failed to download dataset file.', 'Download Error');
+    }
   };
 
   // Helper to render styled badge for auto-detected data types
@@ -455,6 +460,14 @@ window.URL.revokeObjectURL(url);
             {datasetInfo && datasetInfo.has_dataset ? (
               <>
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadCsv}
+                  leftIcon={<Download className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#D5B79F]" />}
+                >
+                  Download File
+                </Button>
+                <Button
                   variant="secondary"
                   size="sm"
                   onClick={handleOpenEditor}
@@ -484,7 +497,6 @@ window.URL.revokeObjectURL(url);
             )}
           </div>
         }
-
       />
 
       {/* Upload Modes & Input Panel */}

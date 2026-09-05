@@ -28,6 +28,13 @@ class RootCauseService:
 
         # 1. Primary Strategy: Analyze directly from the active in-memory DataFrame if available
         df = TenantDatasetStore.get_dataset(self.tenant_id)
+        if df is None or df.empty:
+            try:
+                from app.api.v1.data_routes import _ensure_dataset_loaded
+                df = _ensure_dataset_loaded(self.tenant_id, self.db)
+            except Exception:
+                pass
+
         if df is not None and not df.empty:
             categorical_cols = list(df.select_dtypes(include=["object", "category", "string"]).columns)
             # Match KPI key to numeric column

@@ -89,7 +89,7 @@ def invite_team_member(
     return service.create_or_renew_invitation(
         email=invite_in.email,
         role=invite_in.role,
-        full_name=invite_in.full_name,
+        full_name=invite_in.full_name or invite_in.recipient_name,
         inviter_user=admin_user
     )
 
