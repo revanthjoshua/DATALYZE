@@ -1,5 +1,0 @@
-date,order_id,revenue,units,region,channel,_parsed_date
-2026-08-01,ORD-1,120.5,2.0,North,Online,2026-08-01
-2026-08-02,ORD-2,450.0,5.0,South,POS,2026-08-02
-2026-08-03,ORD-3,310.25,3.0,East,Online,2026-08-03
-2026-08-04,ORD-4,890.0,8.0,West,Marketplace,2026-08-04

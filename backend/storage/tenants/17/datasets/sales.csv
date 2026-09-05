@@ -1,4 +1,0 @@
-date,order_id,revenue,units,region,product_category,sales_channel,visitors,_parsed_date
-2026-08-01,ORD-1,100.0,2.0,North,Electronics,Online Store,50.0,2026-08-01
-2026-08-01,ORD-2,200.0,3.0,South,Apparel,Mobile App,60.0,2026-08-01
-2026-08-02,ORD-3,300.0,4.0,East,Home & Living,In-Store POS,70.0,2026-08-02
