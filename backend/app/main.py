@@ -55,6 +55,36 @@ app.add_middleware(TenantScopingMiddleware)
 # Mount API v1 Routes
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+import logging
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from app.core.exceptions import DatalyzeException
+
+app_logger = logging.getLogger("datalyze.app")
+
+@app.exception_handler(DatalyzeException)
+async def datalyze_exception_handler(request: Request, exc: DatalyzeException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "status_code": exc.status_code}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": str(exc), "status_code": 422}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    app_logger.error(f"Unhandled Server Error on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"An internal error occurred: {str(exc)}", "status_code": 500}
+    )
+
 
 @app.get("/")
 def root():

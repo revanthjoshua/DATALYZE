@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import numpy as np
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
 from app.models.kpi_definition import KPIDefinition
@@ -60,7 +61,35 @@ class KPIRepository(BaseRepository[KPIDefinition]):
         self.db.add(kpi_val)
         self.db.commit()
         self.db.refresh(kpi_val)
-        return kpi_val
+    def bulk_add_kpi_values(self, values_data: List[Dict[str, Any]]) -> None:
+        """
+        Fast batch insertion for multiple KPI value data points with a single atomic transaction.
+        """
+        if not values_data:
+            return
+        
+        objects = []
+        for item in values_data:
+            val = item["value"]
+            # Ensure float is valid and not NaN/Inf
+            try:
+                clean_val = float(val) if val is not None and not np.isnan(float(val)) and not np.isinf(float(val)) else 0.0
+            except Exception:
+                clean_val = 0.0
+
+            objects.append(
+                KPIValue(
+                    company_id=self.tenant_id,
+                    kpi_id=item["kpi_id"],
+                    timestamp=item["timestamp"],
+                    value=round(clean_val, 2),
+                    dimension_data=item.get("dimension_data"),
+                    source_file=item.get("source_file")
+                )
+            )
+
+        self.db.bulk_save_objects(objects)
+        self.db.commit()
 
     def get_kpi_values(
         self,

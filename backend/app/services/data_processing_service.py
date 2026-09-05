@@ -230,9 +230,14 @@ class DataProcessingService:
                 description=f"Auto-detected {detected_type} metric extracted from uploaded file column '{num_col}'"
             )
             self.db.add(new_kpi)
-            self.db.commit()
-            self.db.refresh(new_kpi)
             kpi_defs[num_col] = new_kpi
+
+        try:
+            self.db.commit()
+            for kpi_obj in kpi_defs.values():
+                self.db.refresh(kpi_obj)
+        except Exception:
+            self.db.rollback()
 
         # 6. Check for Smart Inventory Ingestion ONLY if SKU columns exist in uploaded file
         sku_col = self._find_column(df_norm, ["sku", "product_code", "item_code", "part_number"])
@@ -243,11 +248,18 @@ class DataProcessingService:
 
         if sku_col and (stock_col or product_name_col):
             try:
+                inv_items = []
                 for _, row in df_norm.drop_duplicates(subset=[sku_col]).iterrows():
                     sku_val = str(row[sku_col]).strip()
                     item_name = str(row[product_name_col]).strip() if product_name_col and pd.notna(row[product_name_col]) else f"Product {sku_val}"
-                    stock_val = float(row[stock_col]) if stock_col and pd.notna(row[stock_col]) else 50.0
-                    reorder_val = float(row[reorder_col]) if reorder_col and pd.notna(row[reorder_col]) else 20.0
+                    try:
+                        stock_val = float(row[stock_col]) if stock_col and pd.notna(row[stock_col]) else 50.0
+                    except Exception:
+                        stock_val = 50.0
+                    try:
+                        reorder_val = float(row[reorder_col]) if reorder_col and pd.notna(row[reorder_col]) else 20.0
+                    except Exception:
+                        reorder_val = 20.0
 
                     wh_name = str(row[warehouse_col]).strip() if warehouse_col and pd.notna(row[warehouse_col]) else "Primary Fulfillment Hub"
                     wh = self.db.query(WarehouseLocation).filter(
@@ -276,20 +288,23 @@ class DataProcessingService:
                         cost_price=25.0,
                         selling_price=49.99
                     )
-                    self.db.add(inv_item)
-                self.db.commit()
+                    inv_items.append(inv_item)
+                if inv_items:
+                    self.db.add_all(inv_items)
+                    self.db.commit()
             except Exception:
                 self.db.rollback()
 
-        # 7. Store Values STRICTLY from each row / date of the uploaded file
+        # 7. Store Values in high-performance batch
         updated_kpis_set = set()
         base_now = datetime.now(timezone.utc)
         total_rows = len(df_norm)
+        kpi_values_to_save: List[Dict[str, Any]] = []
 
         # Check if Date column exists with distinct parseable dates
         has_real_dates = False
         if date_col:
-            parsed_series = pd.to_datetime(df_norm[date_col], errors="coerce")
+            parsed_series = pd.to_datetime(df_norm[date_col], errors="coerce", format="mixed")
             if parsed_series.notna().sum() >= len(df_norm) * 0.6 and parsed_series.nunique() > 1:
                 has_real_dates = True
                 df_norm["_parsed_date"] = parsed_series.fillna(base_now)
@@ -306,10 +321,10 @@ class DataProcessingService:
                     first_num = numeric_cols_detected[0] if numeric_cols_detected else None
                     if first_num and first_num in group.columns:
                         dim_agg = group.groupby(dim)[first_num].sum().to_dict()
-                        dim_breakdown[dim] = {str(k): round(float(v), 2) for k, v in dim_agg.items()}
+                        dim_breakdown[dim] = {str(k): round(float(v), 2) for k, v in dim_agg.items() if pd.notna(v)}
                     else:
                         dim_agg = group.groupby(dim).size().to_dict()
-                        dim_breakdown[dim] = {str(k): float(v) for k, v in dim_agg.items()}
+                        dim_breakdown[dim] = {str(k): float(v) for k, v in dim_agg.items() if pd.notna(v)}
 
                 for num_col, kpi_obj in kpi_defs.items():
                     if num_col in group.columns:
@@ -318,13 +333,16 @@ class DataProcessingService:
                         else:
                             metric_val = float(group[num_col].sum())
 
-                        self.kpi_repo.add_kpi_value(
-                            kpi_id=kpi_obj.id,
-                            timestamp=timestamp,
-                            value=round(metric_val, 2),
-                            dimension_data=dim_breakdown,
-                            source_file=source_filename
-                        )
+                        if pd.isna(metric_val) or np.isinf(metric_val):
+                            metric_val = 0.0
+
+                        kpi_values_to_save.append({
+                            "kpi_id": kpi_obj.id,
+                            "timestamp": timestamp,
+                            "value": round(metric_val, 2),
+                            "dimension_data": dim_breakdown,
+                            "source_file": source_filename
+                        })
                         updated_kpis_set.add(kpi_obj.name)
         else:
             # Row-by-Row Discrete Processing: Every row in the file is stored as its exact point
@@ -346,15 +364,27 @@ class DataProcessingService:
 
                 for num_col, kpi_obj in kpi_defs.items():
                     if num_col in row and pd.notna(row[num_col]):
-                        val = float(row[num_col])
-                        self.kpi_repo.add_kpi_value(
-                            kpi_id=kpi_obj.id,
-                            timestamp=timestamp,
-                            value=round(val, 2),
-                            dimension_data=dim_breakdown,
-                            source_file=source_filename
-                        )
+                        try:
+                            val = float(row[num_col])
+                            if pd.isna(val) or np.isinf(val):
+                                val = 0.0
+                        except Exception:
+                            val = 0.0
+
+                        kpi_values_to_save.append({
+                            "kpi_id": kpi_obj.id,
+                            "timestamp": timestamp,
+                            "value": round(val, 2),
+                            "dimension_data": dim_breakdown,
+                            "source_file": source_filename
+                        })
                         updated_kpis_set.add(kpi_obj.name)
+
+        # Batch insert all KPI values in one fast transaction
+        try:
+            self.kpi_repo.bulk_add_kpi_values(kpi_values_to_save)
+        except Exception as e:
+            logger.error(f"Error bulk inserting KPI values: {e}", exc_info=True)
 
         # 8. Store full dataset, dynamic schema, and profile in TenantDatasetStore & Database Record
         TenantDatasetStore.set_dataset(

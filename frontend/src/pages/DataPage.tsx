@@ -163,10 +163,13 @@ export const DataPage: React.FC = () => {
       const result = await dataApi.uploadFile(file);
       setResponse(result);
       toast.success(
-        `Successfully ingested ${result.processed_rows || result.total_rows || 'all'} rows! Dynamic schema updated.`,
+        `Successfully ingested ${result.processed_rows || result.total_rows || 'all'} rows! Loading dashboard...`,
         'Ingestion Complete'
       );
       await fetchActiveDataset(0, previewLimit);
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 700);
     } catch (err: any) {
       const msg =
         err.response?.data?.detail ||
@@ -207,10 +210,13 @@ export const DataPage: React.FC = () => {
       const result = await dataApi.loadSampleDataset();
       setResponse(result);
       toast.success(
-        `Loaded ${result.processed_rows} sample records across 30 days.`,
+        `Loaded ${result.processed_rows} sample records across 30 days. Loading dashboard...`,
         'Sample Loaded'
       );
       await fetchActiveDataset(0, previewLimit);
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 700);
     } catch (err: any) {
       toast.error('Failed to load sample dataset.', 'Sample Error');
     } finally {
@@ -255,10 +261,13 @@ export const DataPage: React.FC = () => {
       const result = await dataApi.ingestRawData(payload);
       setResponse(result);
       toast.success(
-        `Pasted text parsed successfully (${result.processed_rows || 0} rows). Schema updated.`,
+        `Pasted text parsed successfully (${result.processed_rows || 0} rows). Loading dashboard...`,
         'Ingestion Complete'
       );
       await fetchActiveDataset(0, previewLimit);
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 700);
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || 'Failed to parse pasted data.';
       setErrorMsg(typeof msg === 'string' ? msg : JSON.stringify(msg));
@@ -343,11 +352,14 @@ export const DataPage: React.FC = () => {
       const filename = datasetInfo?.filename || 'edited_dataset.csv';
       const result = await dataApi.updateDataset(editorRows, filename);
       toast.success(
-        `Updated ${result.processed_rows} rows! Continuous KPIs, detections, and predictions re-analyzed.`,
+        `Updated ${result.processed_rows} rows! Loading dashboard...`,
         'Dataset Saved & Synced'
       );
       setIsEditorOpen(false);
       await fetchActiveDataset(0, previewLimit);
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 700);
     } catch (err: any) {
       toast.error('Failed to save dataset edits.', 'Save Failed');
     } finally {

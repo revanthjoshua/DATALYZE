@@ -38,12 +38,22 @@ class DataTypeDetector:
         "uuid", "hash", "item_code", "product_code", "customer_id", "user_id"
     ]
 
+    @staticmethod
+    def safe_float(val: Any, default: float = 0.0) -> float:
+        try:
+            if val is None or pd.isna(val) or np.isnan(val) or np.isinf(val):
+                return default
+            return round(float(val), 2)
+        except Exception:
+            return default
+
     @classmethod
     def clean_numeric_value(cls, val: Any) -> Optional[float]:
         if pd.isna(val) or val is None:
             return None
         if isinstance(val, (int, float, np.integer, np.floating)):
-            return float(val)
+            f = float(val)
+            return None if (np.isnan(f) or np.isinf(f)) else f
         s = str(val).strip()
         # Remove currency symbols and common noise
         s = re.sub(r"(?i)\b(rs\.?|inr|usd|eur|gbp|cad|aud|chf|jpy|aed)\b", "", s)
@@ -51,7 +61,8 @@ class DataTypeDetector:
         # Handle negative parenthesis e.g. (120.50) -> -120.50
         s = re.sub(r"^\((.+)\)$", r"-\1", s)
         try:
-            return float(s)
+            f = float(s)
+            return None if (np.isnan(f) or np.isinf(f)) else f
         except Exception:
             return None
 
@@ -72,7 +83,7 @@ class DataTypeDetector:
         # Prepare representative samples
         sample_raw = non_null_series.head(5).tolist()
         sample_values = [
-            str(v) if not isinstance(v, (float, np.floating)) else str(round(float(v), 2))
+            str(v) if not isinstance(v, (float, np.floating)) else str(cls.safe_float(v))
             for v in sample_raw
         ]
 
@@ -116,16 +127,22 @@ class DataTypeDetector:
             is_date_col = True
             parsed_dates = series.dropna()
         elif not pd.api.types.is_numeric_dtype(series):
-            # Sample non-numeric values to check if parseable as dates
             test_samples = non_null_series.head(20).astype(str)
-            # Avoid parsing plain words or short codes as dates
-            has_date_symbols = test_samples.str.contains(r"[-/:\s,]|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b", regex=True, case=False).all()
-            if has_date_symbols:
+            # Require date patterns or keywords so general text columns aren't parsed as dates
+            date_name_match = any(k in col_lower for k in ["date", "time", "timestamp", "dt", "day", "month", "year", "created", "updated", "dob", "period"])
+            has_date_pattern = test_samples.str.contains(
+                r"^\s*\d{1,4}[-/\.]\d{1,2}[-/\.]\d{1,4}|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2}|\d{1,2} (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)",
+                regex=True,
+                case=False
+            ).any()
+            
+            if date_name_match or has_date_pattern:
                 try:
-                    converted = pd.to_datetime(test_samples, errors="raise")
-                    if len(converted.dropna()) >= len(test_samples) * 0.8:
+                    converted = pd.to_datetime(test_samples, errors="coerce", format="mixed")
+                    valid_converted = converted.dropna()
+                    if len(valid_converted) >= len(test_samples) * 0.7:
                         is_date_col = True
-                        parsed_dates = pd.to_datetime(non_null_series, errors="coerce").dropna()
+                        parsed_dates = pd.to_datetime(non_null_series, errors="coerce", format="mixed").dropna()
                 except Exception:
                     pass
 
@@ -168,15 +185,23 @@ class DataTypeDetector:
                 },
             }
 
-        # 3. Check for Percentage
+        # 3. Numeric conversion (fast vectorized path)
+        if pd.api.types.is_numeric_dtype(series):
+            numeric_cleaned = pd.to_numeric(non_null_series, errors="coerce").dropna()
+        else:
+            direct_num = pd.to_numeric(non_null_series, errors="coerce").dropna()
+            if len(direct_num) >= non_null_count * 0.7:
+                numeric_cleaned = direct_num
+            else:
+                numeric_cleaned = non_null_series.apply(cls.clean_numeric_value).dropna()
+
+        is_numeric = len(numeric_cleaned) >= non_null_count * 0.7 and len(numeric_cleaned) > 0
+
+        # Check for Percentage
         has_percent_symbol = any("%" in str(v) for v in sample_raw)
         has_percent_name = any(kw in col_lower for kw in cls.PERCENTAGE_KEYWORDS)
-        
-        # Test numeric conversion
-        numeric_cleaned = non_null_series.apply(cls.clean_numeric_value).dropna()
-        is_numeric = len(numeric_cleaned) >= non_null_count * 0.7
 
-        if is_numeric and (has_percent_symbol or (has_percent_name and numeric_cleaned.max() <= 100.0)):
+        if is_numeric and (has_percent_symbol or (has_percent_name and (numeric_cleaned.max() if len(numeric_cleaned) else 0) <= 100.0)):
             return {
                 "name": clean_name,
                 "data_type": "Percentage",
@@ -188,9 +213,9 @@ class DataTypeDetector:
                 "unique_count": unique_count,
                 "sample_values": sample_values,
                 "stats": {
-                    "min": round(float(numeric_cleaned.min()), 2),
-                    "max": round(float(numeric_cleaned.max()), 2),
-                    "mean": round(float(numeric_cleaned.mean()), 2),
+                    "min": cls.safe_float(numeric_cleaned.min()),
+                    "max": cls.safe_float(numeric_cleaned.max()),
+                    "mean": cls.safe_float(numeric_cleaned.mean()),
                 },
             }
 
@@ -213,11 +238,11 @@ class DataTypeDetector:
                 "unique_count": unique_count,
                 "sample_values": sample_values,
                 "stats": {
-                    "sum": round(float(numeric_cleaned.sum()), 2),
-                    "mean": round(float(numeric_cleaned.mean()), 2),
-                    "min": round(float(numeric_cleaned.min()), 2),
-                    "max": round(float(numeric_cleaned.max()), 2),
-                    "median": round(float(numeric_cleaned.median()), 2),
+                    "sum": cls.safe_float(numeric_cleaned.sum()),
+                    "mean": cls.safe_float(numeric_cleaned.mean()),
+                    "min": cls.safe_float(numeric_cleaned.min()),
+                    "max": cls.safe_float(numeric_cleaned.max()),
+                    "median": cls.safe_float(numeric_cleaned.median()),
                 },
             }
 
@@ -253,11 +278,11 @@ class DataTypeDetector:
                 "unique_count": unique_count,
                 "sample_values": sample_values,
                 "stats": {
-                    "sum": round(float(numeric_cleaned.sum()), 2),
-                    "mean": round(float(numeric_cleaned.mean()), 2),
-                    "min": round(float(numeric_cleaned.min()), 2),
-                    "max": round(float(numeric_cleaned.max()), 2),
-                    "std": round(float(numeric_cleaned.std()), 2) if len(numeric_cleaned) > 1 else 0.0,
+                    "sum": cls.safe_float(numeric_cleaned.sum()),
+                    "mean": cls.safe_float(numeric_cleaned.mean()),
+                    "min": cls.safe_float(numeric_cleaned.min()),
+                    "max": cls.safe_float(numeric_cleaned.max()),
+                    "std": cls.safe_float(numeric_cleaned.std()) if len(numeric_cleaned) > 1 else 0.0,
                 },
             }
 
