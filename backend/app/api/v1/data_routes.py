@@ -154,6 +154,8 @@ def load_sample_dataset(
 
 
 @router.delete("/dataset")
+@router.delete("/delete")
+@router.delete("/clear")
 def delete_dataset(
     current_user: User = Depends(require_analyst_user),
     db: Session = Depends(get_db)

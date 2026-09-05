@@ -485,15 +485,26 @@ export const DataPage: React.FC = () => {
                 </Button>
               </>
             ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                isLoading={sampleLoading}
-                onClick={handleLoadSample}
-                leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-              >
-                Load Sample Data
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  isLoading={sampleLoading}
+                  onClick={handleLoadSample}
+                  leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                >
+                  Load Sample Data
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 border-red-200 dark:border-red-900/60"
+                  leftIcon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
+                >
+                  Clear / Reset Data
+                </Button>
+              </>
             )}
           </div>
         }
@@ -531,9 +542,17 @@ export const DataPage: React.FC = () => {
         </div>
 
         {errorMsg && (
-          <div className="mb-4 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-xs flex items-center space-x-2 font-medium">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
+          <div className="mb-4 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-600 dark:text-red-400 text-xs flex items-center justify-between font-medium">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+            <button
+              onClick={() => setErrorMsg(null)}
+              className="text-xs underline hover:text-red-700 ml-2"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -553,6 +572,9 @@ export const DataPage: React.FC = () => {
               ref={fileInputRef}
               type="file"
               accept=".csv,.tsv,.txt,.xlsx,.xls,.xlsm,.xlsb,.docx,.json,.jsonl,.parquet,.pdf"
+              onClick={(e) => {
+                (e.target as HTMLInputElement).value = '';
+              }}
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   handleFileUpload(e.target.files[0]);
@@ -985,6 +1007,35 @@ export const DataPage: React.FC = () => {
         </div>
       )}
 
+      {/* Workspace Data Cleanup & Danger Zone */}
+      <Card className="p-6 border border-red-200 dark:border-red-900/60 bg-red-50/30 dark:bg-red-950/20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3">
+            <div className="p-2.5 rounded-xl bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 shrink-0">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                Workspace Data Management & Cleanup
+              </h4>
+              <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 max-w-xl leading-relaxed">
+                Permanently delete all uploaded files, generated KPI definitions, historical metric time-series points, anomaly detections, predictions, prescriptions, alerts, and reports to return your workspace to a clean, empty state.
+              </p>
+            </div>
+          </div>
+          <div className="shrink-0 flex items-center space-x-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsDeleteModalOpen(true)}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            >
+              Delete Workspace Data
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       {/* FULL-SCREEN INTERACTIVE SPREADSHEET EDITOR MODAL */}
       <Modal
         isOpen={isEditorOpen}
@@ -1027,6 +1078,17 @@ export const DataPage: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setIsEditorOpen(false);
+                  setIsDeleteModalOpen(true);
+                }}
+                leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              >
+                Delete Dataset
+              </Button>
               <Button
                 variant="secondary"
                 size="sm"

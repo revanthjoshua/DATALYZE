@@ -5,20 +5,30 @@ export const dataApi = {
   uploadFile: async (file: File): Promise<IngestionResponse> => {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await axiosClient.post<IngestionResponse>('/data/upload', formData);
+    const res = await axiosClient.post<IngestionResponse>('/data/upload', formData, {
+      timeout: 120000,
+    });
     return res.data;
   },
 
   ingestRawData: async (payload: any): Promise<IngestionResponse> => {
-    const res = await axiosClient.post<IngestionResponse>('/data/ingest-raw', payload);
+    const res = await axiosClient.post<IngestionResponse>('/data/ingest-raw', payload, {
+      timeout: 120000,
+    });
     return res.data;
   },
 
   updateDataset: async (records: any[], filename?: string): Promise<IngestionResponse> => {
-    const res = await axiosClient.put<IngestionResponse>('/data/dataset', {
-      records,
-      filename: filename || 'edited_dataset.csv',
-    });
+    const res = await axiosClient.put<IngestionResponse>(
+      '/data/dataset',
+      {
+        records,
+        filename: filename || 'edited_dataset.csv',
+      },
+      {
+        timeout: 120000,
+      }
+    );
     return res.data;
   },
 

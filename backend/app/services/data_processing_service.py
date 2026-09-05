@@ -20,6 +20,7 @@ from app.models.inventory_item import InventoryItem
 from app.models.warehouse_location import WarehouseLocation
 from app.models.report import Report
 from app.models.uploaded_dataset import UploadedDataset
+from app.models.dataset_blob import DatasetStorageBlob
 from app.repositories.kpi_repository import KPIRepository
 from app.repositories.dataset_repository import DatasetRepository
 from app.schemas.data_schema import (
@@ -98,14 +99,14 @@ class DataProcessingService:
         except Exception:
             self.db.rollback()
 
-        # 1. Clean and normalize column names
-        col_map = {}
+        # 1. Clean and normalize column names directly by index to prevent duplicate collisions
+        clean_cols = []
         seen_clean_names = {}
-        for col in df.columns:
+        for i, col in enumerate(df.columns):
             clean = str(col).strip()
             clean_sub = re.sub(r"[^\w\s]", "_", clean)
             clean_sub = re.sub(r"\s+", "_", clean_sub)
-            clean_sub = clean_sub.strip("_").lower() or f"col_{len(col_map)+1}"
+            clean_sub = clean_sub.strip("_").lower() or f"col_{i+1}"
 
             if clean_sub in seen_clean_names:
                 seen_clean_names[clean_sub] += 1
@@ -114,9 +115,10 @@ class DataProcessingService:
                 seen_clean_names[clean_sub] = 1
                 unique_clean = clean_sub
 
-            col_map[col] = unique_clean
+            clean_cols.append(unique_clean)
 
-        df_norm = df.rename(columns=col_map).copy()
+        df_norm = df.copy()
+        df_norm.columns = clean_cols
 
         # 2. Run Comprehensive Dynamic Data Type Detection
         detected_schema = DataTypeDetector.detect_schema(df_norm)
@@ -179,6 +181,7 @@ class DataProcessingService:
             self.db.query(WarehouseLocation).filter(WarehouseLocation.company_id == self.tenant_id).delete()
             self.db.query(Report).filter(Report.company_id == self.tenant_id).delete()
             self.db.query(KPIDefinition).filter(KPIDefinition.company_id == self.tenant_id).delete()
+            self.db.query(DatasetStorageBlob).filter(DatasetStorageBlob.company_id == self.tenant_id).delete()
             self.db.query(UploadedDataset).filter(UploadedDataset.company_id == self.tenant_id).delete()
             self.db.commit()
         except Exception:
@@ -665,6 +668,7 @@ class DataProcessingService:
             deleted_inv = self.db.query(InventoryItem).filter(InventoryItem.company_id == self.tenant_id).delete()
             deleted_wh = self.db.query(WarehouseLocation).filter(WarehouseLocation.company_id == self.tenant_id).delete()
             deleted_kpis = self.db.query(KPIDefinition).filter(KPIDefinition.company_id == self.tenant_id).delete()
+            deleted_blobs = self.db.query(DatasetStorageBlob).filter(DatasetStorageBlob.company_id == self.tenant_id).delete()
             deleted_datasets = self.db.query(UploadedDataset).filter(UploadedDataset.company_id == self.tenant_id).delete()
             self.db.commit()
         except Exception:
@@ -676,6 +680,7 @@ class DataProcessingService:
             "message": "Dataset and all associated analytics data have been permanently deleted.",
             "deleted_summary": {
                 "datasets": deleted_datasets,
+                "dataset_blobs": deleted_blobs,
                 "kpis": deleted_kpis,
                 "kpi_values": deleted_vals,
                 "detections": deleted_events,

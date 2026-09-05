@@ -303,6 +303,10 @@ If you did not expect this invitation, you can safely ignore this email.
         """
         Sends a branded password reset verification code email via Resend.
         """
+        # Always track OTP for development/testing/audit
+        self.sent_otps[to_email] = otp_code
+        self.last_sent_otp = otp_code
+
         if not self.api_key:
             logger.warning("Resend API key is not configured. Password reset email skipped.")
             return {"success": False, "message": "Resend API key not configured"}

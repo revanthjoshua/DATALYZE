@@ -17,9 +17,9 @@ import {
   Boxes,
   Check,
   Zap,
-  Table as TableIcon,
   Search,
   Eye,
+  Trash2,
 } from 'lucide-react';
 
 import { kpiApi } from '../api/kpiApi';
@@ -54,6 +54,7 @@ import {
 import { PageHeader } from '../components/ui/PageHeader';
 import { StateView } from '../components/ui/StateView';
 import { Drawer } from '../components/ui/Drawer';
+import { Modal } from '../components/ui/Modal';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -89,6 +90,37 @@ export const DashboardPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     'ALL' | 'CRITICAL' | 'WARNING' | 'HEALTHY'
   >('ALL');
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
+
+  const handleDeleteDataset = async () => {
+    setDeleteLoading(true);
+    try {
+      await dataApi.deleteDataset();
+      const keysToRemove = [
+        'datalyze_approved_transfers',
+        'datalyze_inv_risk',
+        'datalyze_pred_kpi_id',
+        'datalyze_kpi_cat',
+        'datalyze_rec_pri',
+        'datalyze_rec_stat',
+        'datalyze_alerts_sev',
+        'datalyze_alerts_stat',
+      ];
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      setIsDeleteModalOpen(false);
+      toast.success(
+        'Uploaded dataset and all generated analytics have been permanently deleted.',
+        'Dataset Deleted'
+      );
+      await fetchAllDashboardData();
+    } catch (err: any) {
+      toast.error('Failed to delete dataset. Please try again.', 'Delete Failed');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   const fetchAllDashboardData = async () => {
     try {
@@ -449,16 +481,26 @@ export const DashboardPage: React.FC = () => {
                   </div>
                 </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/data')}
-                  leftIcon={
-                    <Database className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />
-                  }
-                >
-                  View & Upload Data
-                </Button>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/data')}
+                    leftIcon={
+                      <Database className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />
+                    }
+                  >
+                    View & Upload Data
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                  >
+                    Delete Data
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -892,7 +934,7 @@ export const DashboardPage: React.FC = () => {
                   <CardHeader className="px-0 pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center space-x-2.5">
                       <div className="p-2 rounded-xl bg-[#F4ECE4] dark:bg-[#271910] text-[#6B4226] dark:text-[#D5B79F]">
-                        <TableIcon className="w-4 h-4" />
+                        <FileSpreadsheet className="w-4 h-4" />
                       </div>
 
                       <div>
@@ -952,6 +994,15 @@ export const DashboardPage: React.FC = () => {
                         }
                       >
                         Query Sandbox →
+                      </Button>
+
+                      <Button
+                        variant="destructive"
+                        size="xs"
+                        onClick={() => setIsDeleteModalOpen(true)}
+                        leftIcon={<Trash2 className="w-3 h-3" />}
+                      >
+                        Delete Data
                       </Button>
                     </div>
                   </CardHeader>
@@ -1249,6 +1300,54 @@ export const DashboardPage: React.FC = () => {
           </div>
         )}
       </Drawer>
+
+      {/* Delete Dataset Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => !deleteLoading && setIsDeleteModalOpen(false)}
+        title="Delete Uploaded Dataset & Analytics"
+        description="Permanently remove uploaded file and all generated intelligence"
+        maxWidth="md"
+        icon={<Trash2 className="w-5 h-5 text-red-600" />}
+      >
+        <div className="space-y-4 py-1">
+          <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start space-x-3 text-red-700 dark:text-red-300 text-xs">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-sm mb-1">Permanent Data Deletion</p>
+              <p>
+                Are you sure you want to delete the active dataset <strong>"{datasetInfo?.filename || 'dataset'}"</strong>?
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            This will permanently remove the uploaded file, column schemas, and <strong>ALL generated analytical intelligence</strong> (KPI definitions, time-series values, anomaly detections, root causes, forward predictions, recommendations, alerts, reports, and smart inventory items).
+          </p>
+          <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+            Your dashboard will return to a clean onboarding state ready for a new file upload.
+          </p>
+
+          <div className="flex items-center justify-end space-x-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={deleteLoading}
+              onClick={() => setIsDeleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              isLoading={deleteLoading}
+              onClick={handleDeleteDataset}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            >
+              Permanently Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

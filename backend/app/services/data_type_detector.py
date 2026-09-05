@@ -136,6 +136,22 @@ class DataTypeDetector:
                 for dt in parsed_dates.head(20)
             )
             detected_type = "Date & Time" if has_time_component else "Date"
+            min_d_str = None
+            max_d_str = None
+            try:
+                min_d = parsed_dates.min()
+                if pd.notna(min_d):
+                    min_d_str = min_d.strftime("%Y-%m-%d %H:%M:%S" if has_time_component else "%Y-%m-%d")
+            except Exception:
+                min_d_str = str(parsed_dates.iloc[0]) if len(parsed_dates) > 0 else None
+
+            try:
+                max_d = parsed_dates.max()
+                if pd.notna(max_d):
+                    max_d_str = max_d.strftime("%Y-%m-%d %H:%M:%S" if has_time_component else "%Y-%m-%d")
+            except Exception:
+                max_d_str = str(parsed_dates.iloc[-1]) if len(parsed_dates) > 0 else None
+
             return {
                 "name": clean_name,
                 "data_type": detected_type,
@@ -147,8 +163,8 @@ class DataTypeDetector:
                 "unique_count": unique_count,
                 "sample_values": sample_values,
                 "stats": {
-                    "min_date": parsed_dates.min().strftime("%Y-%m-%d %H:%M:%S" if has_time_component else "%Y-%m-%d"),
-                    "max_date": parsed_dates.max().strftime("%Y-%m-%d %H:%M:%S" if has_time_component else "%Y-%m-%d"),
+                    "min_date": min_d_str,
+                    "max_date": max_d_str,
                 },
             }
 

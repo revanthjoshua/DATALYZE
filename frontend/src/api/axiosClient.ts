@@ -14,8 +14,8 @@ function getApiBaseUrl(): string {
 
 const axiosClient = axios.create({
   baseURL: getApiBaseUrl(),
-  // Never leave the UI waiting indefinitely for a cold or unhealthy deployment.
-  timeout: 15000,
+  // 60-second timeout for large uploads and ML pipeline calculations
+  timeout: 60000,
 });
 
 // Request interceptor: Attach JWT token automatically & handle FormData boundary
@@ -23,10 +23,20 @@ axiosClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('datalyze_token');
     if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+      if (typeof (config.headers as any).set === 'function') {
+        (config.headers as any).set('Authorization', `Bearer ${token}`);
+      } else {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     if (config.data instanceof FormData && config.headers) {
-      delete config.headers['Content-Type'];
+      if (typeof (config.headers as any).delete === 'function') {
+        (config.headers as any).delete('Content-Type');
+        (config.headers as any).delete('content-type');
+      } else {
+        delete config.headers['Content-Type'];
+        delete config.headers['content-type'];
+      }
     }
     return config;
   },

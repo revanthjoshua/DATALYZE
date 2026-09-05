@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { companyApi, DetectedBusinessProfile } from '../api/companyApi';
+import { dataApi } from '../api/dataApi';
 import { User, Invitation } from '../types/user.types';
 import { useTenant } from '../context/TenantContext';
 import { useAuth } from '../context/AuthContext';
@@ -65,6 +66,10 @@ export const CompanySettingsPage: React.FC = () => {
   // Remove Member Modal State
   const [userToRemove, setUserToRemove] = useState<User | null>(null);
   const [removeLoading, setRemoveLoading] = useState<boolean>(false);
+
+  // Delete All Data Danger Zone Modal State
+  const [isDeleteDataModalOpen, setIsDeleteDataModalOpen] = useState<boolean>(false);
+  const [deleteDataLoading, setDeleteDataLoading] = useState<boolean>(false);
 
   // Form Validation Errors
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -142,6 +147,34 @@ export const CompanySettingsPage: React.FC = () => {
       toast.error(msg, 'Error');
     } finally {
       setAdaptLoading(false);
+    }
+  };
+
+  const handleDeleteAllData = async () => {
+    setDeleteDataLoading(true);
+    try {
+      await dataApi.deleteDataset();
+      const keysToRemove = [
+        'datalyze_approved_transfers',
+        'datalyze_inv_risk',
+        'datalyze_pred_kpi_id',
+        'datalyze_kpi_cat',
+        'datalyze_rec_pri',
+        'datalyze_rec_stat',
+        'datalyze_alerts_sev',
+        'datalyze_alerts_stat',
+      ];
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      setIsDeleteDataModalOpen(false);
+      setDetectedProfile(null);
+      toast.success(
+        'All workspace dataset records and derived analytics (KPIs, detections, predictions, alerts, inventory) have been permanently deleted.',
+        'Data Deleted'
+      );
+    } catch (err: any) {
+      toast.error('Failed to delete workspace data. Please try again.', 'Delete Failed');
+    } finally {
+      setDeleteDataLoading(false);
     }
   };
 
@@ -710,6 +743,29 @@ export const CompanySettingsPage: React.FC = () => {
               <span className="font-mono text-[11px] text-neutral-400">ID #{company?.id || 1}</span>
             </div>
           </Card>
+
+          {/* Data Management & Danger Zone */}
+          <Card className="p-5 border-l-4 border-l-red-500 border-red-200 dark:border-red-900/60 bg-red-50/20 dark:bg-red-950/10">
+            <div className="flex items-center space-x-2 text-red-600 dark:text-red-400">
+              <Trash2 className="w-4 h-4" />
+              <CardTitle className="text-red-700 dark:text-red-300">Data Management & Cleanup</CardTitle>
+            </div>
+            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2 leading-relaxed">
+              Permanently delete all uploaded dataset records, historical metrics, anomaly detections, predictions, prescriptions, and reports for this workspace.
+            </p>
+            <div className="mt-4 pt-3 border-t border-red-100 dark:border-red-900/40 flex items-center justify-between">
+              <span className="text-[11px] text-neutral-400 font-mono">Irreversible Action</span>
+              <Button
+                type="button"
+                variant="destructive"
+                size="xs"
+                onClick={() => setIsDeleteDataModalOpen(true)}
+                leftIcon={<Trash2 className="w-3 h-3" />}
+              >
+                Delete Workspace Data
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
 
@@ -880,6 +936,56 @@ export const CompanySettingsPage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Delete Workspace Data Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteDataModalOpen}
+        onClose={() => !deleteDataLoading && setIsDeleteDataModalOpen(false)}
+        title="Delete Workspace Dataset & Analytics"
+        description="Permanently erase active dataset files and all derived intelligence"
+        maxWidth="md"
+        icon={<Trash2 className="w-5 h-5 text-red-600" />}
+      >
+        <div className="space-y-4 py-1">
+          <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start space-x-3 text-red-700 dark:text-red-300 text-xs">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-sm mb-1">Permanent Data Wipe</p>
+              <p>
+                Are you sure you want to permanently delete all uploaded datasets and generated metrics for <strong>{company?.name || 'this workspace'}</strong>?
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            This will permanently remove the uploaded dataset, column classifications, and <strong>ALL calculated analytics</strong> (KPI definitions, historical time-series entries, anomaly detection events, root cause trees, predictive forecasts, AI prescriptions, alerts, reports, and generated smart inventory catalogs).
+          </p>
+          <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+            Company team members, user accounts, and credentials will remain intact, and the workspace will return to a clean zero-data state ready for a new file upload.
+          </p>
+
+          <div className="flex items-center justify-end space-x-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deleteDataLoading}
+              onClick={() => setIsDeleteDataModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              isLoading={deleteDataLoading}
+              onClick={handleDeleteAllData}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+            >
+              Permanently Delete Data
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
