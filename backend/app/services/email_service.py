@@ -1,5 +1,7 @@
 import logging
-from typing import Dict, Any, Optional
+from html import escape
+from urllib.parse import urlencode
+from typing import Dict, Any
 import resend
 from app.core.config import settings
 from app.core.exceptions import DataValidationException
@@ -18,8 +20,6 @@ class EmailService:
         self.api_key = settings.RESEND_API_KEY
         self.from_email = settings.RESEND_FROM_EMAIL
         self.frontend_url = settings.FRONTEND_URL.rstrip("/")
-        self.last_sent_otp: Optional[str] = None
-        self.sent_otps: Dict[str, str] = {}
         if self.api_key:
             resend.api_key = self.api_key
 
@@ -48,7 +48,7 @@ class EmailService:
             logger.error(err_msg)
             raise DataValidationException(err_msg)
 
-        accept_url = f"{self.frontend_url}/accept-invite?token={token}"
+        accept_url = f"{self.frontend_url}/accept-invite?{urlencode({'token': token})}"
         role_title = role.capitalize()
 
         html_content = f"""
@@ -57,7 +57,7 @@ class EmailService:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Join {company_name} on Datalyze</title>
+  <title>Join {escape(company_name, quote=True)} on Datalyze</title>
   <style>
     body {{
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -180,31 +180,31 @@ class EmailService:
         <div class="subtitle">DECISION INTELLIGENCE PLATFORM</div>
       </div>
       <div class="body">
-        <h1>You're invited to join {company_name}</h1>
-        <p>Hello <strong>{recipient_name or 'there'}</strong>,</p>
+        <h1>You're invited to join {escape(company_name, quote=True)}</h1>
+        <p>Hello <strong>{escape(recipient_name or 'there', quote=True)}</strong>,</p>
         <p>
-          <strong>{inviter_name}</strong> has invited you to collaborate in the <strong>{company_name}</strong> workspace on Datalyze.
+          <strong>{escape(inviter_name, quote=True)}</strong> has invited you to collaborate in the <strong>{escape(company_name, quote=True)}</strong> workspace on Datalyze.
         </p>
 
         <div class="badge-box">
           <table style="width:100%; border-collapse: collapse; font-size: 13px;">
             <tr>
               <td style="color:#7A7A7A; padding: 4px 0;">Workspace:</td>
-              <td style="font-weight:600; text-align:right; color:#1A1A1A;">{company_name}</td>
+              <td style="font-weight:600; text-align:right; color:#1A1A1A;">{escape(company_name, quote=True)}</td>
             </tr>
             <tr>
               <td style="color:#7A7A7A; padding: 4px 0;">Assigned Role:</td>
-              <td style="font-weight:600; text-align:right; color:#6B4226;">{role_title}</td>
+              <td style="font-weight:600; text-align:right; color:#6B4226;">{escape(role_title, quote=True)}</td>
             </tr>
             <tr>
               <td style="color:#7A7A7A; padding: 4px 0;">Email:</td>
-              <td style="font-weight:600; text-align:right; color:#1A1A1A;">{to_email}</td>
+              <td style="font-weight:600; text-align:right; color:#1A1A1A;">{escape(to_email, quote=True)}</td>
             </tr>
           </table>
         </div>
 
         <div class="btn-container">
-          <a href="{accept_url}" class="btn" target="_blank">Accept Invitation & Set Password</a>
+          <a href="{escape(accept_url, quote=True)}" class="btn" target="_blank">Accept Invitation & Set Password</a>
         </div>
 
         <p style="font-size: 12px; color: #7A7A7A; text-align: center;">
@@ -213,11 +213,11 @@ class EmailService:
 
         <div class="fallback-box">
           <strong>Button not working?</strong> Copy and paste this link into your browser:<br>
-          <a href="{accept_url}" style="color:#6B4226;">{accept_url}</a>
+          <a href="{escape(accept_url, quote=True)}" style="color:#6B4226;">{escape(accept_url, quote=True)}</a>
         </div>
       </div>
       <div class="footer">
-        If you did not expect an invitation from {company_name}, you can safely ignore this email.<br>
+        If you did not expect an invitation from {escape(company_name, quote=True)}, you can safely ignore this email.<br>
         &copy; 2026 Datalyze Inc. All rights reserved.
       </div>
     </div>
@@ -255,8 +255,10 @@ If you did not expect this invitation, you can safely ignore this email.
             response = resend.Emails.send(params)
 
             # Response is typically a dictionary like {'id': '...'}
-            email_id = response.get("id") if isinstance(response, dict) else getattr(response, "id", str(response))
-            logger.info(f"Resend email dispatched successfully! Email ID: {email_id}")
+            email_id = response.get("id") if isinstance(response, dict) else getattr(response, "id", None)
+            if not email_id:
+                raise RuntimeError("Email provider did not return an acceptance ID")
+            logger.info(f"Resend email accepted! Email ID: {email_id}")
 
             log_audit_event(
                 event="resend_invitation_email_sent",
@@ -273,24 +275,22 @@ If you did not expect this invitation, you can safely ignore this email.
             return {
                 "success": True,
                 "email_id": email_id,
-                "to": to_email,
-                "accept_url": accept_url
+                "to": to_email
             }
 
         except Exception as exc:
-            err_str = str(exc)
-            logger.error(f"Resend API error sending email to {to_email}: {err_str}", exc_info=True)
+            error_type = type(exc).__name__
+            logger.error("Invitation email provider failure (%s)", error_type)
             log_audit_event(
                 event="resend_invitation_email_failed",
-                details={"to": to_email, "error": err_str},
+                details={"to": to_email, "error_type": error_type},
                 level="ERROR",
                 status="FAILURE"
             )
             return {
                 "success": False,
-                "error": err_str,
-                "to": to_email,
-                "accept_url": accept_url
+                "error": "The email provider did not accept the invitation.",
+                "to": to_email
             }
 
     def send_password_reset_otp_email(
@@ -303,10 +303,6 @@ If you did not expect this invitation, you can safely ignore this email.
         """
         Sends a branded password reset verification code email via Resend.
         """
-        # Always track OTP for development/testing/audit
-        self.sent_otps[to_email] = otp_code
-        self.last_sent_otp = otp_code
-
         if not self.api_key:
             logger.warning("Resend API key is not configured. Password reset email skipped.")
             return {"success": False, "message": "Resend API key not configured"}
@@ -393,14 +389,14 @@ If you did not expect this invitation, you can safely ignore this email.
     <div class="content">
       <h2 style="font-size: 20px; font-weight: 700; margin-top: 0; color: #1C1917;">Password Reset Verification</h2>
       <p style="font-size: 15px; line-height: 1.6; color: #44403C;">
-        Hello <strong>{recipient_name or 'there'}</strong>,
+        Hello <strong>{escape(recipient_name or 'there', quote=True)}</strong>,
       </p>
       <p style="font-size: 15px; line-height: 1.6; color: #44403C;">
         We received a request to reset your Datalyze password. Use the single-use verification code below to authorize your password change:
       </p>
       <div class="otp-card">
         <div style="font-size: 12px; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Your 6-Digit Verification Code</div>
-        <div class="otp-code">{otp_code}</div>
+        <div class="otp-code">{escape(otp_code, quote=True)}</div>
         <div style="font-size: 13px; color: #64748B;">Expires in {expires_in_minutes} minutes</div>
       </div>
       <p style="font-size: 14px; line-height: 1.6; color: #78716C;">
@@ -429,9 +425,6 @@ This code will expire in {expires_in_minutes} minutes.
 If you did not request a password reset, you can safely ignore this email.
 """
 
-        self.last_sent_otp = otp_code
-        self.sent_otps[to_email] = otp_code
-
         try:
             resend.api_key = self.api_key
             sender = self._get_formatted_from()
@@ -444,8 +437,10 @@ If you did not request a password reset, you can safely ignore this email.
             }
             logger.info(f"Sending password reset OTP email to {to_email} via Resend from {sender}...")
             response = resend.Emails.send(params)
-            email_id = response.get("id") if isinstance(response, dict) else getattr(response, "id", str(response))
-            logger.info(f"Resend OTP email sent successfully! ID: {email_id}")
+            email_id = response.get("id") if isinstance(response, dict) else getattr(response, "id", None)
+            if not email_id:
+                raise RuntimeError("Email provider did not return an acceptance ID")
+            logger.info(f"Resend OTP email accepted! ID: {email_id}")
             log_audit_event(
                 event="resend_password_reset_email_sent",
                 details={"to": to_email, "email_id": email_id},
@@ -454,15 +449,15 @@ If you did not request a password reset, you can safely ignore this email.
             )
             return {"success": True, "email_id": email_id, "to": to_email}
         except Exception as exc:
-            err_str = str(exc)
-            logger.error(f"Resend API error sending OTP email to {to_email}: {err_str}", exc_info=True)
+            error_type = type(exc).__name__
+            logger.error("Password reset email provider failure (%s)", error_type)
             log_audit_event(
                 event="resend_password_reset_email_failed",
-                details={"to": to_email, "error": err_str},
+                details={"to": to_email, "error_type": error_type},
                 level="ERROR",
                 status="FAILURE"
             )
-            return {"success": False, "error": err_str}
+            return {"success": False, "error": "The email provider did not accept the verification code."}
 
 
 

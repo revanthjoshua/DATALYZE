@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { safeReturnPath } from '../utils/authRedirect';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../components/layout/AppLayout';
 import { LoginPage } from '../pages/LoginPage';
@@ -23,10 +24,12 @@ import { AlertsPage } from '../pages/AlertsPage';
 import { ReportsPage } from '../pages/ReportsPage';
 import { SmartInventoryPage } from '../pages/SmartInventoryPage';
 import { AcceptInvitePage } from '../pages/AcceptInvitePage';
+import { AnalystWorkspacePage } from '../pages/AnalystWorkspacePage';
 
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, token, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -37,7 +40,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   }
 
   if (!token || !user) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" state={{returnTo: location.pathname + location.search + location.hash}} replace />;
   }
 
   return <>{children}</>;
@@ -45,12 +48,13 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token, user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return null;
 
   if (token && user) {
     const isEmployee = (user.role || '').toLowerCase() === 'employee';
-    return <Navigate to={isEmployee ? '/employee/dashboard' : '/admin/dashboard'} replace />;
+    return <Navigate to={safeReturnPath(location.state?.returnTo)} replace />;
   }
 
   return <>{children}</>;
@@ -159,6 +163,7 @@ export const AppRouter: React.FC = () => {
         >
           {/* Main Dashboard Router */}
           <Route path="/" element={<RootDashboardRoute />} />
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/admin/dashboard" element={<AdminDashboardRoute />} />
           <Route path="/employee/dashboard" element={<EmployeeDashboardPage />} />
 
@@ -168,10 +173,11 @@ export const AppRouter: React.FC = () => {
           <Route path="/kpis/:kpiId" element={<KpiDetailPage />} />
           <Route path="/kpi/:kpiId" element={<KpiDetailPage />} />
           <Route path="/data" element={<DataPage />} />
+          <Route path="/analysis" element={<AnalystWorkspacePage />} />
           <Route path="/pipeline" element={<Navigate to="/data" replace />} />
           <Route path="/predictions" element={<PredictionsPage />} />
           <Route path="/recommendations" element={<RecommendationsPage />} />
-          <Route path="/inventory" element={<SmartInventoryPage />} />
+          <Route path="/inventory" element={<Navigate to="/analysis" replace />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/detections" element={<Navigate to="/alerts" replace />} />
           <Route path="/anomaly-alerts" element={<Navigate to="/alerts" replace />} />

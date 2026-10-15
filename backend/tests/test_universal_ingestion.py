@@ -18,9 +18,9 @@ from app.services.noah_service import NoahService
 from app.schemas.noah_schema import NoahQueryRequest
 
 
-@pytest.fixture(scope="module")
-def setup_tenant_and_client():
-    db = SessionLocal()
+@pytest.fixture
+def setup_tenant_and_client(db_session, client):
+    db = db_session
     try:
         # Create test company and user
         company = db.query(Company).filter(Company.id == 99).first()
@@ -44,7 +44,6 @@ def setup_tenant_and_client():
 
         token = create_access_token(data={"sub": str(user.id), "company_id": 99, "role": user.role})
         headers = {"Authorization": f"Bearer {token}"}
-        client = TestClient(app)
         return {"client": client, "headers": headers, "db": db, "tenant_id": 99}
     finally:
         db.close()

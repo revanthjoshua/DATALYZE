@@ -29,6 +29,7 @@ class PredictionService:
             if not history:
                 continue
 
+            history = [h for h in history if not (h.dimension_data or {}).get("_row_index") or (h.dimension_data or {}).get("_observed_date")]
             values = [float(h.value) for h in history]
             timestamps = [h.timestamp for h in history]
 
@@ -57,7 +58,7 @@ class PredictionService:
                 self.db.add(pred)
                 generated.append(pred)
 
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
 
         return generated
 
@@ -70,41 +71,10 @@ class PredictionService:
         if not kpi:
             return []
 
-        history = self.kpi_repo.get_kpi_values(kpi_id, limit=200)
-        if not history:
-            return []
-
-        values = [float(h.value) for h in history]
-        timestamps = [h.timestamp for h in history]
-
-        forecast_points = Forecaster.forecast_kpi(values, timestamps, horizon_days=horizon_days)
-
-        # Clear and replace predictions for this KPI
-        self.db.query(Prediction).filter(
-            Prediction.company_id == self.tenant_id,
-            Prediction.kpi_id == kpi_id
-        ).delete()
-
-        fresh_preds: List[Prediction] = []
-        for fp in forecast_points:
-            pred = Prediction(
-                company_id=self.tenant_id,
-                kpi_id=kpi_id,
-                forecast_date=fp["forecast_date"],
-                predicted_value=float(fp["predicted_value"]) if fp["predicted_value"] is not None else 0.0,
-                range_low=float(fp["range_low"]) if fp["range_low"] is not None else 0.0,
-                range_high=float(fp["range_high"]) if fp["range_high"] is not None else 0.0,
-                confidence_level=str(fp.get("confidence_level", "moderate")),
-                method=str(fp["method"]),
-
-                model_details=fp.get("model_details")
-            )
-            self.db.add(pred)
-            fresh_preds.append(pred)
-
-        self.db.commit()
-        return fresh_preds
-
+        # Reading predictions never regenerates or persists analytics.
+        return self.db.query(Prediction).filter(
+            Prediction.company_id == self.tenant_id, Prediction.kpi_id == kpi_id
+        ).order_by(Prediction.forecast_date).limit(max(1,min(horizon_days,30))).all()
 
     def list_all_predictions(self) -> List[Prediction]:
         return self.prediction_repo.get_all(order_by_col="forecast_date", ascending=True)

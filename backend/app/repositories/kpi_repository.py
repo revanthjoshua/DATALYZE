@@ -46,7 +46,7 @@ class KPIRepository(BaseRepository[KPIDefinition]):
             existing.value = value
             existing.dimension_data = dimension_data
             existing.source_file = source_file
-            self.db.commit()
+            (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
             self.db.refresh(existing)
             return existing
 
@@ -59,7 +59,7 @@ class KPIRepository(BaseRepository[KPIDefinition]):
             source_file=source_file
         )
         self.db.add(kpi_val)
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         self.db.refresh(kpi_val)
     def bulk_add_kpi_values(self, values_data: List[Dict[str, Any]]) -> None:
         """
@@ -89,7 +89,7 @@ class KPIRepository(BaseRepository[KPIDefinition]):
             )
 
         self.db.bulk_save_objects(objects)
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
 
     def get_kpi_values(
         self,
@@ -106,7 +106,7 @@ class KPIRepository(BaseRepository[KPIDefinition]):
             query = query.filter(KPIValue.timestamp >= start_date)
         if end_date:
             query = query.filter(KPIValue.timestamp <= end_date)
-        return query.order_by(asc(KPIValue.timestamp)).limit(limit).all()
+        return list(reversed(query.order_by(desc(KPIValue.timestamp), desc(KPIValue.id)).limit(limit).all()))
 
     def get_latest_kpi_value(self, kpi_id: int) -> Optional[KPIValue]:
         return (
@@ -138,5 +138,5 @@ class KPIRepository(BaseRepository[KPIDefinition]):
             .filter(KPIValue.company_id == self.tenant_id)
             .delete()
         )
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         return deleted_count

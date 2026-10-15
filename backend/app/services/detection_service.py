@@ -30,6 +30,7 @@ class DetectionService:
 
         for kpi in active_kpis:
             history = self.kpi_repo.get_kpi_values(kpi.id, limit=60)
+            history = [h for h in history if not (h.dimension_data or {}).get('_row_index') or (h.dimension_data or {}).get('_observed_date')]
             if len(history) < 4:
                 continue
 
@@ -38,6 +39,12 @@ class DetectionService:
 
             result = AnomalyDetector.detect_anomalies(values, timestamps)
             if result:
+                existing = self.db.query(DetectionEvent).filter(
+                    DetectionEvent.company_id == self.tenant_id,
+                    DetectionEvent.kpi_id == kpi.id,
+                    DetectionEvent.detected_at == result['detected_at']).first()
+                if existing:
+                    continue
                 # Create Detection record
                 detection = DetectionEvent(
                     company_id=self.tenant_id,
@@ -52,7 +59,7 @@ class DetectionService:
                     status="active"
                 )
                 self.db.add(detection)
-                self.db.commit()
+                (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
 
                 self.db.refresh(detection)
 
@@ -76,7 +83,7 @@ class DetectionService:
                     is_read=False
                 )
                 self.db.add(alert)
-                self.db.commit()
+                (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
 
                 new_detections.append(detection)
 
@@ -84,21 +91,17 @@ class DetectionService:
 
     def list_detections(self, limit: int = 100, active_only: bool = False) -> List[DetectionEvent]:
         detections = self.detection_repo.get_all_detections(limit=limit, active_only=active_only)
-        if not detections and not active_only:
-            # Auto-run detection pipeline over active KPIs
-            self.run_detection_pipeline()
-            detections = self.detection_repo.get_all_detections(limit=limit, active_only=active_only)
         return detections
 
     def list_active_detections(self, limit: int = 50) -> List[DetectionEvent]:
-        return self.list_detections(limit=limit, active_only=False)
+        return self.list_detections(limit=limit, active_only=True)
 
     def acknowledge_detection(self, detection_id: int) -> DetectionEvent:
         detection = self.detection_repo.get_by_id(detection_id)
         if not detection:
             raise ResourceNotFoundException("Detection Event")
         detection.status = "acknowledged"
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         self.db.refresh(detection)
         return detection
 
@@ -111,60 +114,9 @@ class DetectionService:
         )
         for det in active:
             det.status = "acknowledged"
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         return len(active)
 
-    def create_test_anomaly(self) -> DetectionEvent:
-        """Injects a simulated high-divergence anomaly event for UI layout verification"""
-        kpis = self.kpi_repo.get_active_kpis()
-        target_kpi = kpis[0] if kpis else None
-        
-        if not target_kpi:
-            # Fallback KPI
-            target_kpi = KPIDefinition(
-                company_id=self.tenant_id,
-                key="revenue",
-                name="Net Revenue",
-                category="Financial",
-                unit="currency",
-                direction="increase_is_good",
-                is_active=True
-            )
-            self.db.add(target_kpi)
-            self.db.commit()
-            self.db.refresh(target_kpi)
-
-        now = datetime.now(timezone.utc)
-        test_det = DetectionEvent(
-            company_id=self.tenant_id,
-            kpi_id=target_kpi.id,
-            detected_at=now,
-            direction="down",
-            magnitude=2.85,
-            percentage_change=-24.6,
-            baseline_value=12500.0,
-            current_value=9425.0,
-            severity="critical",
-            status="active"
-        )
-        self.db.add(test_det)
-        self.db.commit()
-        self.db.refresh(test_det)
-
-        # Trigger root-cause
-        self.root_cause_service.explain_detection(test_det)
-
-        # Add linked alert
-        alert = Alert(
-            company_id=self.tenant_id,
-            kpi_id=target_kpi.id,
-            detection_id=test_det.id,
-            title=f"{target_kpi.name} Critical Outlier Divergence (-24.6%)",
-            message=f"Measured value of 9,425 diverged by 2.85 standard deviations from baseline (12,500).",
-            severity="critical",
-            is_read=False
-        )
-        self.db.add(alert)
-        self.db.commit()
-
-        return test_det
+    def create_test_anomaly(self):
+        from fastapi import HTTPException
+        raise HTTPException(410, "Simulated alerts are disabled. Use an explicitly labelled sample dataset and run real detection.")

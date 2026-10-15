@@ -56,7 +56,7 @@ class BaseRepository(Generic[ModelType]):
             data["company_id"] = self.tenant_id
         db_obj = self.model(**data)
         self.db.add(db_obj)
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         self.db.refresh(db_obj)
         return db_obj
 
@@ -69,7 +69,7 @@ class BaseRepository(Generic[ModelType]):
             if field not in ("id", "company_id") and hasattr(db_obj, field) and value is not None:
                 setattr(db_obj, field, value)
         
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         self.db.refresh(db_obj)
         return db_obj
 
@@ -79,7 +79,7 @@ class BaseRepository(Generic[ModelType]):
         if not db_obj:
             return False
         self.db.delete(db_obj)
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         return True
 
     def count(self) -> int:

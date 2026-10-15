@@ -64,28 +64,16 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        origins = []
+        # Defaults belong to the field declaration. An explicit allowlist,
+        # including an empty list, must never gain additional trusted sites.
         if isinstance(v, str):
-            v_str = v.strip()
-            if v_str.startswith("[") and v_str.endswith("]"):
-                try:
-                    origins = json.loads(v_str)
-                except Exception:
-                    origins = [item.strip() for item in v_str.strip("[]").split(",") if item.strip()]
-            else:
-                origins = [item.strip() for item in v_str.split(",") if item.strip()]
-        elif isinstance(v, list):
-            origins = [str(item).strip() for item in v if str(item).strip()]
-        
-        default_origins = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "https://datalyze-y9n8.vercel.app",
-        ]
-        for def_url in default_origins:
-            if def_url not in origins:
-                origins.append(def_url)
-        return origins
+            value = v.strip()
+            origins = json.loads(value) if value.startswith("[") else value.split(",")
+        else:
+            origins = v
+        if not isinstance(origins, list) or any(not isinstance(item, str) for item in origins):
+            raise ValueError("CORS_ORIGINS must be a list of origin strings.")
+        return list(dict.fromkeys(item.strip().rstrip("/") for item in origins if item.strip()))
 
     @field_validator("SECRET_KEY")
     @classmethod

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Bell,
   Sparkles,
@@ -29,6 +29,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   const { isDark, toggleTheme } = useTheme();
   const { timeRange, setTimeRange } = useDateRange();
   const navigate = useNavigate();
+  const location = useLocation();
+  const hasDateFilter = ['/', '/dashboard', '/admin/dashboard', '/employee/dashboard', '/kpis', '/predictions'].includes(location.pathname);
 
   return (
     <header className="h-14 bg-white dark:bg-[#15171C] border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-30 transition-colors">
@@ -62,9 +64,9 @@ export const Topbar: React.FC<TopbarProps> = ({
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <span className="text-neutral-900 dark:text-neutral-100 font-bold">Engine:</span>
+          <span className="text-neutral-900 dark:text-neutral-100 font-bold">Workflow:</span>
           <span className="text-[#6B4226] dark:text-[#8C5E3C] font-medium">
-            Measure → Detect → Explain → Predict → Recommend
+            Question → Data → Evidence → Action → Review
           </span>
         </div>
       </div>
@@ -72,13 +74,13 @@ export const Topbar: React.FC<TopbarProps> = ({
       {/* Right Side: Global Time-Range Picker, Quick Search, Ingest, Theme Toggle, Notifications */}
       <div className="flex items-center space-x-2 sm:space-x-3">
         {/* Global Date / Time-Range Selector */}
-        <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700/80 text-xs">
+        {hasDateFilter && <div className="flex items-center space-x-1.5 px-2.5 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200/80 dark:border-neutral-700/80 text-xs">
           <Calendar className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#D5B79F]" />
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value as TimeRangeOption)}
             className="bg-transparent text-xs font-semibold text-neutral-800 dark:text-neutral-200 focus:outline-none cursor-pointer pr-1"
-            title="Global Dashboard Time Horizon"
+            title="Observed days ending at the latest dataset date (up to 10,000 points)"
           >
             <option value="7D" className="bg-white dark:bg-neutral-900">Last 7 Days</option>
             <option value="14D" className="bg-white dark:bg-neutral-900">Last 14 Days</option>
@@ -86,7 +88,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             <option value="90D" className="bg-white dark:bg-neutral-900">Last 90 Days</option>
             <option value="ALL" className="bg-white dark:bg-neutral-900">All Records</option>
           </select>
-        </div>
+        </div>}
 
         {/* Command Palette Shortcut Button */}
         <button

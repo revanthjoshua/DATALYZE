@@ -64,7 +64,7 @@ export const KpisPage: React.FC = () => {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const data = await kpiApi.getDashboardSummary();
+      const data = await kpiApi.getDashboardSummary(timeRange);
       setKpis(data);
     } catch (err: any) {
       console.error('Failed to fetch KPIs', err);
@@ -76,7 +76,7 @@ export const KpisPage: React.FC = () => {
 
   useEffect(() => {
     fetchKpis();
-  }, []);
+  }, [timeRange]);
 
   const handleCategorySelect = (cat: string) => {
     setSelectedCategory(cat);
@@ -303,8 +303,8 @@ export const KpisPage: React.FC = () => {
       <PageHeader
         stage={dynamicEyebrow}
         stageIcon={<Activity className="w-4 h-4 text-[#6B4226] dark:text-[#D5B79F]" />}
-        title="Key Performance Indicators & Formulas"
-        description="Formulas, statistical baselines, and multi-dimensional performance tracking across business stages."
+        title="KPIs & Exploration"
+        description="Metric baselines, historical performance trends, and custom metric definitions extracted from your dataset."
         actions={
           <>
             <Button

@@ -18,11 +18,17 @@ export const dataApi = {
     return res.data;
   },
 
-  updateDataset: async (records: any[], filename?: string): Promise<IngestionResponse> => {
+  getEditorSnapshot: async (): Promise<any> => {
+    const res = await axiosClient.get("/data/dataset/editor");
+    return res.data;
+  },
+
+  updateDataset: async (records: any[], filename?: string, revision?: string): Promise<IngestionResponse> => {
     const res = await axiosClient.put<IngestionResponse>(
       '/data/dataset',
       {
         records,
+        revision,
         filename: filename || 'edited_dataset.csv',
       },
       {

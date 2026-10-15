@@ -24,7 +24,7 @@ import {
   XCircle,
   AlertCircle,
 } from 'lucide-react';
-import { companyApi, DetectedBusinessProfile } from '../api/companyApi';
+import { companyApi } from '../api/companyApi';
 import { dataApi } from '../api/dataApi';
 import { User, Invitation } from '../types/user.types';
 import { useTenant } from '../context/TenantContext';
@@ -46,15 +46,14 @@ export const CompanySettingsPage: React.FC = () => {
   const navigate = useNavigate();
 
   const userRole = (user?.role || '').toLowerCase();
-  const isAdmin = userRole.includes('admin');
+  const isAdmin = ['company admin','company_admin','admin','platform super admin','super_admin'].includes(userRole);
+  const writable = ['company admin','company_admin','admin','platform super admin','super_admin','analyst','manager','employee'].includes(userRole);
 
   const [name, setName] = useState(company?.name || '');
   const [industry, setIndustry] = useState(company?.industry || 'Retail/E-commerce');
   const [currency, setCurrency] = useState(company?.currency || 'USD');
   const [timezone, setTimezone] = useState(company?.timezone || 'UTC');
 
-  const [detectedProfile, setDetectedProfile] = useState<DetectedBusinessProfile | null>(null);
-  const [adaptLoading, setAdaptLoading] = useState<boolean>(false);
   const [team, setTeam] = useState<User[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [teamTab, setTeamTab] = useState<'active' | 'pending'>('active');
@@ -82,17 +81,6 @@ export const CompanySettingsPage: React.FC = () => {
   const [inviteErrors, setInviteErrors] = useState<Record<string, string>>({});
   const [inviteLoading, setInviteLoading] = useState(false);
 
-  const fetchDetectedProfile = async () => {
-    try {
-      const prof = await companyApi.getDetectedProfile();
-      if (prof && prof.industry) {
-        setDetectedProfile(prof);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
   const loadTeamAndInvites = async () => {
     try {
       const users = await companyApi.getUsers();
@@ -117,40 +105,10 @@ export const CompanySettingsPage: React.FC = () => {
       setTimezone(company.timezone);
     }
     loadTeamAndInvites();
-    fetchDetectedProfile();
   }, [company, isAdmin]);
 
-  const handleAutoAdapt = async () => {
-    if (!isAdmin) {
-      toast.error('Only Company Admins can auto-adapt workspace settings.', 'Permission Denied');
-      return;
-    }
-    setAdaptLoading(true);
-    try {
-      const updated = await companyApi.autoAdaptCompany();
-      setName(updated.name);
-      setIndustry(updated.industry);
-      setCurrency(updated.currency);
-      setTimezone(updated.timezone);
-      await updateCompany({
-        name: updated.name,
-        industry: updated.industry,
-        currency: updated.currency,
-        timezone: updated.timezone,
-      });
-      toast.success(
-        `Applied settings from "${detectedProfile?.source_file || 'uploaded file'}": Industry set to ${updated.industry}, Currency set to ${updated.currency}.`,
-        'Settings Auto-Adapted'
-      );
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Failed to auto-adapt settings from file.';
-      toast.error(msg, 'Error');
-    } finally {
-      setAdaptLoading(false);
-    }
-  };
-
   const handleDeleteAllData = async () => {
+    if (!writable) return;
     setDeleteDataLoading(true);
     try {
       await dataApi.deleteDataset();
@@ -166,9 +124,8 @@ export const CompanySettingsPage: React.FC = () => {
       ];
       keysToRemove.forEach((k) => localStorage.removeItem(k));
       setIsDeleteDataModalOpen(false);
-      setDetectedProfile(null);
       toast.success(
-        'All workspace dataset records and derived analytics (KPIs, detections, predictions, alerts, inventory) have been permanently deleted.',
+        'Active dataset and its generated analytics, findings, discussion, and replacement backups deleted. Saved library snapshots, stakeholder reports, briefs, and rules were retained.',
         'Data Deleted'
       );
     } catch (err: any) {
@@ -473,36 +430,6 @@ export const CompanySettingsPage: React.FC = () => {
             </form>
           </Card>
 
-          {/* Auto-Adapt from Uploaded Data Card */}
-          {detectedProfile && detectedProfile.industry && (
-            <Card className="p-5 border-l-4 border-l-[#6B4226] bg-[#FAF8F5]/50 dark:bg-[#15171C]/50">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <Sparkles className="w-4 h-4 text-[#6B4226] dark:text-[#D5B79F]" />
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-900 dark:text-neutral-100 font-mono">
-                      Data Pipeline Detected Profile
-                    </h4>
-                  </div>
-                  <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                    Source: <strong className="text-neutral-900 dark:text-neutral-100">{detectedProfile.source_file || 'Uploaded File'}</strong> • Industry: <span className="font-semibold text-[#6B4226] dark:text-[#D5B79F]">{detectedProfile.industry}</span> • Currency: <span className="font-semibold">{detectedProfile.currency || 'USD'}</span>
-                  </p>
-                </div>
-                {isAdmin && (
-                  <Button
-                    variant="secondary"
-                    size="xs"
-                    isLoading={adaptLoading}
-                    onClick={handleAutoAdapt}
-                    leftIcon={<RefreshCw className="w-3 h-3 text-[#6B4226]" />}
-                  >
-                    Auto-Adapt Settings
-                  </Button>
-                )}
-              </div>
-            </Card>
-          )}
-
           {/* Team Members & Pending Invitations Section */}
           <Card className="p-6">
             <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-4 mb-4 flex-wrap gap-3">
@@ -736,7 +663,7 @@ export const CompanySettingsPage: React.FC = () => {
               <CardTitle>Data Privacy & Security</CardTitle>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2 leading-relaxed">
-              Your business records and metrics are private, isolated, and encrypted. No other company or workspace has access to your data.
+              Access to company records requires workspace membership and the appropriate role. Downloaded files are outside these workspace access controls.
             </p>
             <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs text-emerald-600 font-medium">
               <span>● Workspace Secured</span>
@@ -751,7 +678,7 @@ export const CompanySettingsPage: React.FC = () => {
               <CardTitle className="text-red-700 dark:text-red-300">Data Management & Cleanup</CardTitle>
             </div>
             <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2 leading-relaxed">
-              Permanently delete all uploaded dataset records, historical metrics, anomaly detections, predictions, prescriptions, and reports for this workspace.
+              This permanently removes the active source, generated metrics, alerts and forecasts, analysis runs, findings, discussion, and replacement backups. Saved library snapshots, stakeholder reports and reviews, business briefs, and saved monitoring and metric rules remain available.
             </p>
             <div className="mt-4 pt-3 border-t border-red-100 dark:border-red-900/40 flex items-center justify-between">
               <span className="text-[11px] text-neutral-400 font-mono">Irreversible Action</span>
@@ -759,10 +686,11 @@ export const CompanySettingsPage: React.FC = () => {
                 type="button"
                 variant="destructive"
                 size="xs"
+                disabled={!writable}
                 onClick={() => setIsDeleteDataModalOpen(true)}
                 leftIcon={<Trash2 className="w-3 h-3" />}
               >
-                Delete Workspace Data
+                Delete Active Dataset
               </Button>
             </div>
           </Card>
@@ -937,12 +865,12 @@ export const CompanySettingsPage: React.FC = () => {
         </Modal>
       )}
 
-      {/* Delete Workspace Data Confirmation Modal */}
+      {/* Delete Active Dataset Confirmation Modal */}
       <Modal
-        isOpen={isDeleteDataModalOpen}
+        isOpen={isDeleteDataModalOpen && writable}
         onClose={() => !deleteDataLoading && setIsDeleteDataModalOpen(false)}
-        title="Delete Workspace Dataset & Analytics"
-        description="Permanently erase active dataset files and all derived intelligence"
+        title="Delete Active Dataset & Analytics"
+        description="Delete the active source and its associated analysis history"
         maxWidth="md"
         icon={<Trash2 className="w-5 h-5 text-red-600" />}
       >
@@ -950,17 +878,17 @@ export const CompanySettingsPage: React.FC = () => {
           <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start space-x-3 text-red-700 dark:text-red-300 text-xs">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-sm mb-1">Permanent Data Wipe</p>
+              <p className="font-bold text-sm mb-1">Permanent Active Dataset Deletion</p>
               <p>
-                Are you sure you want to permanently delete all uploaded datasets and generated metrics for <strong>{company?.name || 'this workspace'}</strong>?
+                Are you sure you want to permanently delete the active dataset and its analysis history for <strong>{company?.name || 'this workspace'}</strong>?
               </p>
             </div>
           </div>
           <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
-            This will permanently remove the uploaded dataset, column classifications, and <strong>ALL calculated analytics</strong> (KPI definitions, historical time-series entries, anomaly detection events, root cause trees, predictive forecasts, AI prescriptions, alerts, reports, and generated smart inventory catalogs).
+            This permanently removes the active source, generated metrics, alerts and forecasts, analysis runs, findings, discussion, and replacement backups.
           </p>
           <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
-            Company team members, user accounts, and credentials will remain intact, and the workspace will return to a clean zero-data state ready for a new file upload.
+            Saved library snapshots, stakeholder reports and reviews, business briefs, and saved monitoring and metric rules remain available. Company accounts and team membership are unchanged.
           </p>
 
           <div className="flex items-center justify-end space-x-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
@@ -978,6 +906,7 @@ export const CompanySettingsPage: React.FC = () => {
               variant="destructive"
               size="sm"
               isLoading={deleteDataLoading}
+              disabled={!writable}
               onClick={handleDeleteAllData}
               leftIcon={<Trash2 className="w-3.5 h-3.5" />}
             >

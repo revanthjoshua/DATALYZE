@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Download,
   Printer,
@@ -44,37 +44,35 @@ export const ReportsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [reportPeriod, setReportPeriod] = useState<'30D' | '7D' | '90D'>('30D');
+  const requestId = useRef(0);
 
   const fetchReportData = async () => {
+    const request = ++requestId.current;
     try {
       setLoading(true);
       setErrorMsg(null);
       const [kpiData, detData, recData] = await Promise.all([
-        kpiApi.getDashboardSummary().catch(() => []),
-        detectionApi.getDetections().catch(() => []),
-        recommendationApi.getRecommendations().catch(() => []),
+        kpiApi.getDashboardSummary(reportPeriod),
+        detectionApi.getDetections(),
+        recommendationApi.getRecommendations(),
       ]);
+      if (request !== requestId.current) return;
       setKpis(kpiData);
       setDetections(detData);
       setRecommendations(recData);
 
-      if (kpiData && kpiData.length > 0) {
-        const predData = await predictionApi.getPredictions(kpiData[0].id).catch(() => []);
-        setPredictions(predData);
-      } else {
-        setPredictions([]);
-      }
     } catch (err) {
+      if (request !== requestId.current) return;
       console.error('Failed to load report data', err);
       setErrorMsg('Failed to compile executive briefing.');
     } finally {
-      setLoading(false);
+      if (request === requestId.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchReportData();
-  }, []);
+  }, [reportPeriod]);
 
   const handlePrint = () => {
     toast.info('Preparing print formatted document...', 'Executive Brief');
@@ -102,28 +100,28 @@ export const ReportsPage: React.FC = () => {
 
     let healthSummary = '';
     if (criticalKpis > 0) {
-      healthSummary = `During this ${reportPeriod} reporting window for ${compName} (${ind}), ${criticalKpis} out of ${kpis.length} monitored KPIs are in critical divergence, requiring immediate executive intervention. ${healthyKpis} metrics remain healthy and ${warningKpis} require active monitoring.`;
+      healthSummary = `For ${compName}, ${criticalKpis} of ${kpis.length} metrics have a critical change flag and ${warningKpis} have a warning flag in the selected KPI window. Review changes against the business objective before choosing an action.`;
     } else if (warningKpis > 0) {
-      healthSummary = `During this ${reportPeriod} reporting window for ${compName} (${ind}), baseline operational health remains stable across ${healthyKpis} of ${kpis.length} KPIs, while ${warningKpis} metrics show notable trend variations.`;
+      healthSummary = `For ${compName}, ${warningKpis} of ${kpis.length} metrics have a warning flag in the selected KPI window. These flags describe observed changes, not whether business goals were met.`;
     } else {
-      healthSummary = `During this ${reportPeriod} reporting window for ${compName} (${ind}), business operations are performing smoothly with 100% (${kpis.length}/${kpis.length}) of tracked metrics meeting or exceeding baseline performance goals.`;
+      healthSummary = `${compName} has ${kpis.length} metrics in this report. No critical or warning change flags are present. This alone does not establish that business goals were met; check data completeness and the saved business brief.`;
     }
 
     let anomalyNarrative = '';
     if (topAnomaly) {
       anomalyNarrative = `The most significant divergence occurred in ${topAnomaly.kpi_name || 'key metrics'}, shifting ${topAnomaly.direction === 'down' ? 'downward' : 'upward'} by ${Math.abs(topAnomaly.percentage_change || 0).toFixed(1)}% (reading: ${(topAnomaly.current_value || 0).toLocaleString()} vs baseline: ${(topAnomaly.baseline_value || 0).toLocaleString()}).`;
       if (topAnomaly.root_causes && topAnomaly.root_causes.length > 0) {
-        anomalyNarrative += ` Root cause analysis identifies "${topAnomaly.root_causes[0].dimension_value}" (${topAnomaly.root_causes[0].dimension_name}) as driving ${topAnomaly.root_causes[0].contribution_percentage || 'the dominant'} share of this divergence.`;
+        anomalyNarrative += ` The recorded contribution for "${topAnomaly.root_causes[0].dimension_value}" (${topAnomaly.root_causes[0].dimension_name}) is ${topAnomaly.root_causes[0].contribution_percentage}% of the net change. This is an arithmetic attribution, not evidence of causation.`;
       }
     } else {
-      anomalyNarrative = `Statistical anomaly scanning confirms zero significant baseline divergences during this reporting window.`;
+      anomalyNarrative = `No saved anomaly findings are available for the active dataset. Insufficient dated history can also produce an empty result.`;
     }
 
     let actionNarrative = '';
     if (topRec) {
-      actionNarrative = `Primary operational prescription: "${topRec.title}" — ${topRec.action_text}`;
+      actionNarrative = `Suggested investigation: "${topRec.title}" — ${topRec.action_text}`;
     } else {
-      actionNarrative = `No open corrective action steps are currently required. Continue monitoring active metric telemetry.`;
+      actionNarrative = `No saved investigation actions are available. Record decisions, owners, and validation criteria in Analyst Workspace.`;
     }
 
     return { healthSummary, anomalyNarrative, actionNarrative };
@@ -134,7 +132,14 @@ export const ReportsPage: React.FC = () => {
   const handleDownloadCsv = async () => {
     try {
       setDownloadingCsv(true);
-      const blob = await reportApi.downloadKpiSummaryCsv();
+      const cell = (value: unknown) => {
+        let text = value === null || value === undefined ? '' : String(value);
+        if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+      };
+      const rows = [['Metric', 'Category', 'Unit', 'Selected window', 'Value', 'Previous', 'Change %', 'Change flag'],
+        ...kpis.map(k => [k.name, k.category, k.unit, reportPeriod, k.current_value, k.previous_value, k.percentage_change, k.status])];
+      const blob = new Blob(['\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
       reportApi.triggerDownloadBlob(blob, 'datalyze_executive_briefing_report.csv');
       toast.success('Executive KPI summary CSV exported successfully.', 'Export Complete');
     } catch (err: any) {
@@ -153,8 +158,8 @@ export const ReportsPage: React.FC = () => {
         <PageHeader
           stage={`Export Ready • ${kpis.length} Monitored Numbers • PDF & CSV Summaries`}
           stageIcon={<FileSpreadsheet className="w-4 h-4 text-[#6B4226] dark:text-[#D5B79F]" />}
-          title="Executive Decision Briefing Reports"
-          description="Synthesized multi-stage business briefing with KPI telemetry, anomaly audit trail, and prescriptive initiatives."
+          title="Reports & Decision Briefs"
+          description="Synthesized executive decision briefings with KPI telemetry, anomaly audit trails, and printable summaries."
           actions={
             <>
               <Button
@@ -162,6 +167,7 @@ export const ReportsPage: React.FC = () => {
                 size="sm"
                 onClick={handleDownloadCsv}
                 isLoading={downloadingCsv}
+                disabled={loading || !!errorMsg || !kpis.length}
                 leftIcon={<Download className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#8C5E3C]" />}
               >
                 Download CSV
@@ -171,6 +177,7 @@ export const ReportsPage: React.FC = () => {
                 variant="primary"
                 size="sm"
                 onClick={handlePrint}
+                disabled={loading || !!errorMsg || !kpis.length}
                 leftIcon={<Printer className="w-3.5 h-3.5" />}
               >
                 Print / Save PDF
@@ -185,7 +192,7 @@ export const ReportsPage: React.FC = () => {
         <div className="flex items-center space-x-2">
           <Calendar className="w-4 h-4 text-neutral-400" />
           <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 font-mono">
-            Reporting Window:
+            KPI Window:
           </span>
           <div className="flex items-center space-x-1">
             {(['7D', '30D', '90D'] as const).map((period) => (
@@ -198,7 +205,7 @@ export const ReportsPage: React.FC = () => {
                     : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 border border-neutral-200 dark:border-neutral-700'
                 }`}
               >
-                Last {period}
+                Latest {period}
               </button>
             ))}
           </div>
@@ -208,6 +215,8 @@ export const ReportsPage: React.FC = () => {
           Generated on {currentDateStr}
         </span>
       </div>
+
+      <p className="text-xs text-neutral-500">The KPI window ends at the latest observed data date. Saved findings and investigation actions below refer to the active dataset as a whole. The CSV uses the selected KPI window.</p>
 
       <StateView
         isLoading={loading}

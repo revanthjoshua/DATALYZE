@@ -5,9 +5,9 @@ export interface Prediction {
   kpi_name?: string;
   forecast_date: string;
   predicted_value: number;
-  range_low: number;
-  range_high: number;
-  confidence_level: 'low' | 'moderate' | 'high';
+  range_low: number | null;
+  range_high: number | null;
+  confidence_level: 'low' | 'moderate' | 'high' | 'empirical';
   method: string;
   model_details?: Record<string, any>;
   created_at: string;
@@ -23,7 +23,7 @@ export interface Recommendation {
   title: string;
   action_text: string;
   rationale?: string;
-  impact_level: 'low' | 'medium' | 'high';
+  impact_level: 'low' | 'medium' | 'high' | 'unestimated';
   priority: 'urgent' | 'standard' | 'low';
   category: string;
   status: 'open' | 'in_progress' | 'completed' | 'dismissed';

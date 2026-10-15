@@ -26,12 +26,10 @@ import { kpiApi } from '../api/kpiApi';
 import { dataApi } from '../api/dataApi';
 import { detectionApi } from '../api/detectionApi';
 import { recommendationApi } from '../api/recommendationApi';
-import { inventoryApi } from '../api/inventoryApi';
 
 import { KPISummaryCard } from '../types/kpi.types';
 import { DetectionEvent } from '../types/detection.types';
 import { Recommendation } from '../types/noah.types';
-import { InventoryDashboardSummary } from '../types/inventory.types';
 
 import { KpiCard } from '../components/kpi/KpiCard';
 import { KpiTrendChart } from '../components/kpi/KpiTrendChart';
@@ -67,8 +65,6 @@ export const DashboardPage: React.FC = () => {
   const [kpis, setKpis] = useState<KPISummaryCard[]>([]);
   const [detections, setDetections] = useState<DetectionEvent[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [inventory, setInventory] =
-    useState<InventoryDashboardSummary | null>(null);
 
   const [datasetInfo, setDatasetInfo] = useState<any>(null);
   const [datasetPreview, setDatasetPreview] = useState<any>(null);
@@ -127,31 +123,28 @@ export const DashboardPage: React.FC = () => {
       setLoading(true);
       setErrorMsg(null);
 
-      const [kpiData, detData, recData, invData, infoData, prevData] =
+      const absentDataset = (err: any) => { if (err.response?.status === 404) return null; throw err; };
+      const [kpiData, detData, recData, infoData, prevData] =
         await Promise.all([
-          kpiApi.getDashboardSummary().catch(() => []),
-          detectionApi.getDetections().catch(() => []),
-          recommendationApi.getRecommendations().catch(() => []),
-          inventoryApi.getInventorySummary().catch(() => null),
-          dataApi.getDatasetInfo().catch(() => null),
-          dataApi.getDatasetPreview(10, 0).catch(() => null),
+          kpiApi.getDashboardSummary(timeRange),
+          detectionApi.getDetections(),
+          recommendationApi.getRecommendations(),
+          dataApi.getDatasetInfo().catch(absentDataset),
+          dataApi.getDatasetPreview(10, 0).catch(absentDataset),
         ]);
 
       setKpis(kpiData);
       setDetections(detData);
       setRecommendations(recData);
-      setInventory(invData);
       setDatasetInfo(infoData);
       setDatasetPreview(prevData);
 
-      if (kpiData.length > 0 && !selectedKpiForChart) {
-        setSelectedKpiForChart(kpiData[0]);
-      }
+      setSelectedKpiForChart(kpiData.find(k => k.id === selectedKpiForChart?.id) || kpiData[0] || null);
     } catch (err: any) {
       console.error('Failed to fetch dashboard data', err);
 
       setErrorMsg(
-        'Could not connect to the continuous intelligence backend. Please verify your connection.'
+        'Could not load the complete dashboard. Please check your connection and retry.'
       );
     } finally {
       setLoading(false);
@@ -160,14 +153,14 @@ export const DashboardPage: React.FC = () => {
 
   useEffect(() => {
     fetchAllDashboardData();
-  }, []);
+  }, [timeRange]);
 
   const handleLoadSample = async () => {
     try {
       setSampleLoading(true);
 
       toast.info(
-        'Ingesting realistic 30-day company dataset...',
+        'Loading a generated demonstration dataset…',
         'Data Pipeline'
       );
 
@@ -280,15 +273,10 @@ export const DashboardPage: React.FC = () => {
     (r) => r.status === 'open'
   );
 
-  const criticalInventoryCount = (inventory?.items || []).filter(
-    (i) => i.stockout_risk === 'critical'
-  ).length;
-
   const totalNeedsAttention =
     criticalDetections.length +
     warningCount +
-    openRecommendations.length +
-    criticalInventoryCount;
+    openRecommendations.length;
 
   const activeDetectionsCount = (detections || []).filter(
     (d) => (d?.status || '').toLowerCase() === 'active'
@@ -299,7 +287,7 @@ export const DashboardPage: React.FC = () => {
       ? `${activeDetectionsCount} Active Alert${
           activeDetectionsCount === 1 ? '' : 's'
         } • ${kpis.length} Monitored Numbers`
-      : `${company?.name || 'Workspace'} • All Systems Healthy`;
+      : `${company?.name || 'Workspace'} • No saved active alerts`;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in">
@@ -1306,7 +1294,7 @@ export const DashboardPage: React.FC = () => {
         isOpen={isDeleteModalOpen}
         onClose={() => !deleteLoading && setIsDeleteModalOpen(false)}
         title="Delete Uploaded Dataset & Analytics"
-        description="Permanently remove uploaded file and all generated intelligence"
+        description="Remove the active dataset and its derived dashboard results"
         maxWidth="md"
         icon={<Trash2 className="w-5 h-5 text-red-600" />}
       >
@@ -1321,7 +1309,7 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
           <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
-            This will permanently remove the uploaded file, column schemas, and <strong>ALL generated analytical intelligence</strong> (KPI definitions, time-series values, anomaly detections, root causes, forward predictions, recommendations, alerts, reports, and smart inventory items).
+            This will remove the active dataset, its column schema, KPI values, detections, forecasts, and related dashboard results. Saved workspace evidence remains in Share and is marked as referring to an older dataset.
           </p>
           <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
             Your dashboard will return to a clean onboarding state ready for a new file upload.

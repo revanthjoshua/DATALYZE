@@ -1,15 +1,29 @@
 import os
+# Set isolation before importing the application/configuration, even when tests
+# are invoked from the backend directory beside a real .env file.
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["STORAGE_BACKEND"] = "db"
+os.environ["ENVIRONMENT"] = "test"
+os.environ["RESEND_API_KEY"] = ""
+# Test origins are explicit and independent of a developer or deployment .env.
+os.environ["CORS_ORIGINS"] = '["http://localhost:5173", "http://127.0.0.1:5173"]'
+# Operator sources and notification destinations must never run in unit tests.
+os.environ["DATALYZE_SOURCES_JSON"] = "[]"
+os.environ["DATALYZE_NOTIFICATIONS_JSON"] = "[]"
+os.environ["DATALYZE_MONITOR_INTERVAL_SECONDS"] = "0"
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from app.core.database import Base, get_db
 from app.main import app
 
 # Use in-memory SQLite for high-speed deterministic test execution
-TEST_DATABASE_URL = "sqlite:///./test_datalyze.db"
+TEST_DATABASE_URL = "sqlite:///:memory:"
 
-test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
+test_engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
@@ -19,11 +33,6 @@ def setup_test_db():
     Base.metadata.create_all(bind=test_engine)
     yield
     Base.metadata.drop_all(bind=test_engine)
-    if os.path.exists("./test_datalyze.db"):
-        try:
-            os.remove("./test_datalyze.db")
-        except Exception:
-            pass
 
 
 @pytest.fixture
@@ -33,6 +42,20 @@ def db_session():
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture(autouse=True)
+def isolate_auth_rate_limit(monkeypatch):
+    """Tests share an app, but each test starts with its own request window."""
+    from app.middleware.rate_limit_middleware import rate_limiter
+
+    # Keep protection active during every test; reset only at test boundaries.
+    monkeypatch.delenv("DISABLE_RATE_LIMIT", raising=False)
+    rate_limiter.reset()
+    try:
+        yield
+    finally:
+        rate_limiter.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -55,3 +78,22 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def accepted_test_email(monkeypatch):
+    """No test sends real mail; tests may explicitly override acceptance/failure."""
+    from app.services.email_service import email_service
+    import resend
+    monkeypatch.setattr(email_service, "api_key", "test-only-not-a-real-key")
+    monkeypatch.setattr(email_service, "sent_otps", {}, raising=False)
+    monkeypatch.setattr(email_service, "last_sent_otp", None, raising=False)
+    monkeypatch.setattr(resend.Emails, "send", lambda params: {"id": "test-provider-acceptance"})
+    send_otp = email_service.send_password_reset_otp_email
+
+    def record_test_otp(**kwargs):
+        email_service.sent_otps[kwargs["to_email"]] = kwargs["otp_code"]
+        email_service.last_sent_otp = kwargs["otp_code"]
+        return send_otp(**kwargs)
+
+    monkeypatch.setattr(email_service, "send_password_reset_otp_email", record_test_otp)

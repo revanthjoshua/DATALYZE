@@ -36,6 +36,7 @@ import {
 import { dataApi } from '../api/dataApi';
 import { IngestionResponse } from '../types/data.types';
 import { useTenant } from '../context/TenantContext';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -48,6 +49,8 @@ import { FormField, Input, Select, Textarea } from '../components/ui/FormField';
 
 export const DataPage: React.FC = () => {
   const { company } = useTenant();
+  const { user } = useAuth();
+  const writable = ['company admin','company_admin','admin','platform super admin','super_admin','analyst','manager','employee'].includes((user?.role || '').toLowerCase());
   const toast = useToast();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,6 +82,7 @@ export const DataPage: React.FC = () => {
   // Dataset Live Spreadsheet Editor Modal State
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
   const [editorRows, setEditorRows] = useState<any[]>([]);
+  const [editorRevision, setEditorRevision] = useState<string | undefined>();
   const [editorCols, setEditorCols] = useState<string[]>([]);
   const [editorLoading, setEditorLoading] = useState<boolean>(false);
   const [editorSaving, setEditorSaving] = useState<boolean>(false);
@@ -89,6 +93,7 @@ export const DataPage: React.FC = () => {
   const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
 
   const handleDeleteDataset = async () => {
+    if (!writable) return;
     setDeleteLoading(true);
     try {
       await dataApi.deleteDataset();
@@ -113,7 +118,7 @@ export const DataPage: React.FC = () => {
       setTableSearch('');
       setIsDeleteModalOpen(false);
       toast.success(
-        'Uploaded dataset and all generated analytics (KPIs, detections, predictions, alerts, inventory) have been permanently deleted.',
+        'Active dataset and its generated analytics, findings, discussion, and replacement backups deleted. Saved library snapshots, stakeholder reports, briefs, and rules were retained.',
         'Dataset Deleted'
       );
     } catch (err: any) {
@@ -155,6 +160,7 @@ export const DataPage: React.FC = () => {
   }, []);
 
   const handleFileUpload = async (file: File) => {
+    if (!writable) return;
     if (!file) return;
     setErrorMsg(null);
     setLoading(true);
@@ -203,6 +209,7 @@ export const DataPage: React.FC = () => {
   };
 
   const handleLoadSample = async () => {
+    if (!writable) return;
     setSampleLoading(true);
     setErrorMsg(null);
     try {
@@ -226,6 +233,7 @@ export const DataPage: React.FC = () => {
 
   const handlePasteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!writable) return;
     if (!rawText.trim()) {
       setErrorMsg('Please paste raw CSV or JSON data.');
       return;
@@ -233,32 +241,16 @@ export const DataPage: React.FC = () => {
     setPasteLoading(true);
     setErrorMsg(null);
     try {
-      let payload: any = { raw_data: rawText.trim() };
-      try {
-        const parsed = JSON.parse(rawText.trim());
-        payload = parsed;
-      } catch {
-        const lines = rawText.trim().split('\n');
-        if (lines.length >= 2) {
-          const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''));
-          const records = [];
-          for (let i = 1; i < lines.length; i++) {
-            const currentLine = lines[i].trim();
-            if (!currentLine) continue;
-            const values = currentLine.split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''));
-            const record: Record<string, any> = {};
-            headers.forEach((h, idx) => {
-              const val = values[idx];
-              const num = Number(val);
-              record[h] = !isNaN(num) && val !== '' ? num : val;
-            });
-            records.push(record);
-          }
-          payload = { records };
-        }
+      const pasted = rawText.trim();
+      let result: IngestionResponse;
+      if (/^[\[{]/.test(pasted)) {
+        const parsed = JSON.parse(pasted);
+        if (!parsed || typeof parsed !== 'object') throw new Error('Paste a JSON record or array of records.');
+        result = await dataApi.ingestRawData(Array.isArray(parsed) ? { records: parsed } : parsed);
+      } else {
+        // Preserve quoted delimiters, multiline cells and identifiers for the server parser.
+        result = await dataApi.uploadFile(new File([rawText], 'pasted-data.csv', { type: 'text/csv' }));
       }
-
-      const result = await dataApi.ingestRawData(payload);
       setResponse(result);
       toast.success(
         `Pasted text parsed successfully (${result.processed_rows || 0} rows). Loading dashboard...`,
@@ -297,10 +289,14 @@ export const DataPage: React.FC = () => {
 
   // Open Full Dataset Spreadsheet Editor Modal
   const handleOpenEditor = async () => {
+    if (!writable) return;
     setEditorLoading(true);
     setIsEditorOpen(true);
     try {
-      const preview = await dataApi.getDatasetPreview(200, 0);
+      setEditorRows([]);
+      setEditorRevision(undefined);
+      const preview = await dataApi.getEditorSnapshot();
+      setEditorRevision(preview.revision);
       if (preview && preview.records) {
         setEditorRows(JSON.parse(JSON.stringify(preview.records)));
         setEditorCols(preview.columns || []);
@@ -308,8 +304,9 @@ export const DataPage: React.FC = () => {
         setEditorRows(JSON.parse(JSON.stringify(preview.rows)));
         setEditorCols(preview.columns || []);
       }
-    } catch (err) {
-      toast.error('Failed to load dataset records for editing.', 'Editor Error');
+    } catch (err: any) {
+      setIsEditorOpen(false);
+      toast.error(err.response?.data?.detail || 'Failed to load dataset records for editing.', 'Editor Error');
     } finally {
       setEditorLoading(false);
     }
@@ -318,7 +315,8 @@ export const DataPage: React.FC = () => {
   const handleCellChange = (rowIndex: number, colName: string, value: string) => {
     setEditorRows((prev) => {
       const updated = [...prev];
-      const numVal = Number(value);
+      const current = prev[rowIndex][colName];
+      const numVal = typeof current === 'number' && value.trim() !== '' ? Number(value) : NaN;
       updated[rowIndex] = {
         ...updated[rowIndex],
         [colName]: !isNaN(numVal) && value.trim() !== '' ? numVal : value,
@@ -343,6 +341,7 @@ export const DataPage: React.FC = () => {
   };
 
   const handleSaveEditor = async () => {
+    if (!writable) return;
     if (editorRows.length === 0) {
       toast.error('Dataset cannot be empty.', 'Save Error');
       return;
@@ -350,7 +349,7 @@ export const DataPage: React.FC = () => {
     setEditorSaving(true);
     try {
       const filename = datasetInfo?.filename || 'edited_dataset.csv';
-      const result = await dataApi.updateDataset(editorRows, filename);
+      const result = await dataApi.updateDataset(editorRows, filename, editorRevision);
       toast.success(
         `Updated ${result.processed_rows} rows! Loading dashboard...`,
         'Dataset Saved & Synced'
@@ -361,7 +360,7 @@ export const DataPage: React.FC = () => {
         navigate('/dashboard');
       }, 700);
     } catch (err: any) {
-      toast.error('Failed to save dataset edits.', 'Save Failed');
+      toast.error(err.response?.data?.detail || 'Failed to save dataset edits.', 'Save Failed');
     } finally {
       setEditorSaving(false);
     }
@@ -482,6 +481,7 @@ export const DataPage: React.FC = () => {
                 <Button
                   variant="secondary"
                   size="sm"
+                  disabled={!writable}
                   onClick={handleOpenEditor}
                   leftIcon={<Eye className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#D5B79F]" />}
                 >
@@ -490,6 +490,7 @@ export const DataPage: React.FC = () => {
                 <Button
                   variant="destructive"
                   size="sm"
+                  disabled={!writable}
                   onClick={() => setIsDeleteModalOpen(true)}
                   leftIcon={<Trash2 className="w-3.5 h-3.5" />}
                 >
@@ -502,6 +503,7 @@ export const DataPage: React.FC = () => {
                   variant="outline"
                   size="sm"
                   isLoading={sampleLoading}
+                  disabled={!writable}
                   onClick={handleLoadSample}
                   leftIcon={<Sparkles className="w-3.5 h-3.5" />}
                 >
@@ -510,6 +512,7 @@ export const DataPage: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={!writable}
                   onClick={() => setIsDeleteModalOpen(true)}
                   className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40 border-red-200 dark:border-red-900/60"
                   leftIcon={<Trash2 className="w-3.5 h-3.5 text-red-500" />}
@@ -522,8 +525,9 @@ export const DataPage: React.FC = () => {
         }
       />
 
+      {!writable && <p role="status" className="text-sm text-neutral-500">Your Viewer role can inspect and download data. Uploading, editing and deleting require an editing role.</p>}
       {/* Upload Modes & Input Panel */}
-      <Card className="p-6">
+      {writable && <Card className="p-6">
         <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-4 mb-4 flex-wrap gap-2">
           <div className="flex items-center space-x-2">
             <button
@@ -608,7 +612,8 @@ export const DataPage: React.FC = () => {
                 variant="primary"
                 size="sm"
                 isLoading={loading}
-                onClick={() => fileInputRef.current?.click()}
+                disabled={!writable}
+                  onClick={() => fileInputRef.current?.click()}
                 leftIcon={<Upload className="w-3.5 h-3.5" />}
               >
                 Browse Files
@@ -617,6 +622,7 @@ export const DataPage: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={!writable}
                   onClick={handleOpenEditor}
                   leftIcon={<Eye className="w-3.5 h-3.5" />}
                 >
@@ -652,7 +658,7 @@ export const DataPage: React.FC = () => {
             </div>
           </form>
         )}
-      </Card>
+      </Card>}
 
       {/* Empty State when no dataset uploaded */}
       {(!datasetInfo || !datasetInfo.has_dataset) && (
@@ -664,7 +670,8 @@ export const DataPage: React.FC = () => {
             <Button
               variant="primary"
               size="sm"
-              onClick={() => fileInputRef.current?.click()}
+              disabled={!writable}
+                  onClick={() => fileInputRef.current?.click()}
               leftIcon={<Upload className="w-3.5 h-3.5" />}
             >
               Upload File Now
@@ -687,7 +694,8 @@ export const DataPage: React.FC = () => {
                     Active File Records
                   </span>
                   <button
-                    onClick={handleOpenEditor}
+                    disabled={!writable}
+                  onClick={handleOpenEditor}
                     className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-[#6B4226] dark:text-[#D5B79F] hover:bg-[#F4ECE4] transition-colors cursor-pointer flex items-center space-x-1 text-xs font-semibold"
                     title="View & Edit File"
                   >
@@ -929,7 +937,8 @@ export const DataPage: React.FC = () => {
                   <Button
                     variant="primary"
                     size="xs"
-                    onClick={handleOpenEditor}
+                    disabled={!writable}
+                  onClick={handleOpenEditor}
                     leftIcon={<Eye className="w-3.5 h-3.5" />}
                   >
                     View & Edit File
@@ -1031,7 +1040,7 @@ export const DataPage: React.FC = () => {
                 Workspace Data Management & Cleanup
               </h4>
               <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 max-w-xl leading-relaxed">
-                Permanently delete all uploaded files, generated KPI definitions, historical metric time-series points, anomaly detections, predictions, prescriptions, alerts, and reports to return your workspace to a clean, empty state.
+                This permanently removes the active source, generated metrics, alerts and forecasts, analysis runs, findings, discussion, and replacement backups. Saved library snapshots, stakeholder reports and reviews, business briefs, and saved monitoring and metric rules remain available.
               </p>
             </div>
           </div>
@@ -1039,10 +1048,11 @@ export const DataPage: React.FC = () => {
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => setIsDeleteModalOpen(true)}
+              disabled={!writable}
+                  onClick={() => setIsDeleteModalOpen(true)}
               leftIcon={<Trash2 className="w-3.5 h-3.5" />}
             >
-              Delete Workspace Data
+              Delete Active Dataset
             </Button>
           </div>
         </div>
@@ -1050,7 +1060,7 @@ export const DataPage: React.FC = () => {
 
       {/* FULL-SCREEN INTERACTIVE SPREADSHEET EDITOR MODAL */}
       <Modal
-        isOpen={isEditorOpen}
+        isOpen={isEditorOpen && writable}
         onClose={() => setIsEditorOpen(false)}
         maxWidth="full"
         title={`Active Document Editor: ${datasetInfo?.filename || 'Uploaded File'}`}
@@ -1112,7 +1122,8 @@ export const DataPage: React.FC = () => {
                 variant="primary"
                 size="sm"
                 isLoading={editorSaving}
-                onClick={handleSaveEditor}
+                disabled={!writable}
+                  onClick={handleSaveEditor}
                 leftIcon={<Save className="w-3.5 h-3.5" />}
               >
                 Save Changes & Re-Analyze
@@ -1196,10 +1207,10 @@ export const DataPage: React.FC = () => {
 
       {/* Delete Dataset Confirmation Modal */}
       <Modal
-        isOpen={isDeleteModalOpen}
+        isOpen={isDeleteModalOpen && writable}
         onClose={() => !deleteLoading && setIsDeleteModalOpen(false)}
         title="Delete Uploaded Dataset"
-        description="Permanently remove uploaded file and all generated intelligence"
+        description="Delete the active source and its associated analysis history"
         maxWidth="md"
         icon={<Trash2 className="w-5 h-5 text-red-600" />}
       >
@@ -1214,10 +1225,10 @@ export const DataPage: React.FC = () => {
             </div>
           </div>
           <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
-            This will permanently remove the uploaded file, column schemas, and <strong>ALL generated analytical intelligence</strong> (KPI definitions, time-series values, anomaly detections, root causes, forward predictions, recommendations, alerts, reports, and smart inventory items).
+            This permanently removes the active source, generated metrics, alerts and forecasts, analysis runs, findings, discussion, and replacement backups.
           </p>
           <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
-            Your workspace will return to a clean, empty state ready for a new file upload.
+            Saved library snapshots, stakeholder reports and reviews, business briefs, and saved monitoring and metric rules remain available.
           </p>
 
           <div className="flex items-center justify-end space-x-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
@@ -1233,7 +1244,8 @@ export const DataPage: React.FC = () => {
               variant="destructive"
               size="sm"
               isLoading={deleteLoading}
-              onClick={handleDeleteDataset}
+              disabled={!writable}
+                  onClick={handleDeleteDataset}
               leftIcon={<Trash2 className="w-3.5 h-3.5" />}
             >
               Permanently Delete

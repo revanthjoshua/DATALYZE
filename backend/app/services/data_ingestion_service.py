@@ -1,5 +1,6 @@
 import os
 import io
+import csv
 import json
 import re
 import zipfile
@@ -284,51 +285,41 @@ class DataIngestionService:
             or trimmed_content.startswith((b"{", b"["))
         ):
             try:
-                text_content = content.decode("utf-8", errors="ignore").strip()
-                # Check for JSONL (Newline Delimited JSON)
-                if "\n" in text_content and not text_content.startswith("["):
-                    lines = [l.strip() for l in text_content.splitlines() if l.strip()]
-                    records = []
-                    for line in lines:
-                        try:
-                            records.append(json.loads(line))
-                        except Exception:
-                            pass
-                    if records:
-                        df = pd.DataFrame(records)
-
-                if df is None:
-                    parsed_json = json.loads(text_content)
-                    if isinstance(parsed_json, list):
-                        df = pd.DataFrame(parsed_json)
-                    elif isinstance(parsed_json, dict):
-                        # Search for nested data arrays
-                        for wrapper_key in [
-                            "data", "items", "records", "rows", "results",
-                            "table", "transactions", "values", "dataset", "content"
-                        ]:
-                            if wrapper_key in parsed_json and isinstance(parsed_json[wrapper_key], list):
-                                df = pd.DataFrame(parsed_json[wrapper_key])
-                                break
-                        if df is None:
-                            df = pd.json_normalize(parsed_json)
-            except Exception as e:
-                errors_encountered.append(f"JSON: {str(e)}")
-
-        # 10. TSV / Tab Delimited
-        if df is None and lower_name.endswith((".tsv", ".tab")):
-            encodings = ["utf-8-sig", "utf-8", "latin1", "cp1252", "iso-8859-1", "utf-16"]
-            for enc in encodings:
+                text_content = content.decode("utf-8-sig").strip()
+                def reject_nonfinite(value):
+                    raise ValueError(f"Non-finite JSON value '{value}' is not supported. Use null for missing values.")
                 try:
-                    df = pd.read_csv(io.BytesIO(content), sep="\t", encoding=enc, comment="#", on_bad_lines="skip")
-                    if df is not None and not df.empty and len(df.columns) > 1:
-                        break
-                except Exception:
-                    continue
+                    parsed_json = json.loads(text_content, parse_constant=reject_nonfinite)
+                except json.JSONDecodeError:
+                    # A JSONL import is atomic: a malformed line must not vanish.
+                    lines = [(i, line) for i, line in enumerate(text_content.splitlines(), 1) if line.strip()]
+                    parsed_json = []
+                    for line_number, line in lines:
+                        try:
+                            record = json.loads(line, parse_constant=reject_nonfinite)
+                        except json.JSONDecodeError as error:
+                            raise ValueError(f"Invalid JSON on line {line_number}.") from error
+                        if not isinstance(record, dict):
+                            raise ValueError(f"JSON line {line_number} must contain an object.")
+                        parsed_json.append(record)
+                if isinstance(parsed_json, dict):
+                    for wrapper_key in ["data", "items", "records", "rows", "results", "table", "transactions", "values", "dataset", "content"]:
+                        if isinstance(parsed_json.get(wrapper_key), list):
+                            parsed_json = parsed_json[wrapper_key]
+                            break
+                    else:
+                        parsed_json = [parsed_json]
+                if not isinstance(parsed_json, list) or not all(isinstance(row, dict) for row in parsed_json):
+                    raise ValueError("JSON data must be an object or an array of record objects.")
+                df = pd.json_normalize(parsed_json)
+                df.attrs['explicit_headers'] = True
+            except (ValueError, UnicodeDecodeError) as error:
+                raise DataValidationException(f"JSON import failed: {error}") from error
 
-        # 11. CSV & Universal Delimited Text Files
-        if df is None:
-            df = self._parse_delimited_text(content)
+        # Delimited imports validate every record before building a table.
+        if df is None and not (is_zip_container or is_ole_container or is_pdf or is_parquet):
+            delimiter = "\t" if lower_name.endswith((".tsv", ".tab")) else "|" if lower_name.endswith(".psv") else None
+            df = self._parse_delimited_text(content, delimiter=delimiter)
 
         # 12. Fallback: try Excel parser once more if CSV failed
         if df is None or df.empty:
@@ -353,8 +344,7 @@ class DataIngestionService:
             err_details = "; ".join(errors_encountered) if errors_encountered else "File format unsupported or content unparseable"
             raise DataValidationException(f"Failed to parse file '{filename}': {err_details}")
 
-        # Clean completely empty rows and columns
-        df = df.dropna(how="all").dropna(axis=1, how="all")
+        # Preserve blank fields, all-missing columns and explicit source records.
 
         # Header Auto-Discovery: Elevate genuine header row if top rows are metadata/title banners
         df = self._clean_headers(df)
@@ -502,75 +492,58 @@ class DataIngestionService:
         wb.close()
         return best_df
 
-    def _parse_delimited_text(self, content: bytes) -> Optional[pd.DataFrame]:
-        """
-        Parses CSV, TSV, semicolon, pipe, or colon delimited text with encoding autodetection
-        and leading comment/metadata skipping.
-        """
-        encodings = ["utf-8-sig", "utf-8", "latin1", "cp1252", "iso-8859-1", "utf-16", "utf-16le"]
-        delimiters = [",", ";", "\t", "|", ":"]
-
-        decoded_text = None
-        best_enc = "utf-8"
-        for enc in encodings:
+    def _parse_delimited_text(self, content: bytes, delimiter: Optional[str] = None) -> Optional[pd.DataFrame]:
+        """Read text without silently skipping bad rows, coercing identifiers or NA labels."""
+        encodings = ["utf-16"] if content.startswith((b"\xff\xfe", b"\xfe\xff")) else ["utf-8-sig", "cp1252", "latin1"]
+        decoded = None
+        for encoding in encodings:
             try:
-                decoded_text = content.decode(enc)
-                best_enc = enc
+                decoded = content.decode(encoding)
                 break
-            except Exception:
+            except UnicodeDecodeError:
                 continue
-
-        if decoded_text:
-            lines = decoded_text.splitlines()
-            filtered_lines = []
-            skipped_comment_count = 0
-            for line in lines:
-                stripped = line.strip()
-                if (stripped.startswith("#") or stripped.startswith("//") or stripped.startswith("--")) and skipped_comment_count < 15:
-                    skipped_comment_count += 1
-                    continue
-                filtered_lines.append(line)
-            
-            clean_text = "\n".join(filtered_lines)
-            content_to_parse = clean_text.encode(best_enc)
-        else:
-            content_to_parse = content
-
-        best_candidate = None
-        max_quality_score = -1
-
-        for enc in encodings:
-            for sep in delimiters:
+        if decoded is None or "\x00" in decoded:
+            raise DataValidationException("Unable to decode text. Save the file as UTF-8 or UTF-16 with a byte-order mark.")
+        lines = decoded.splitlines(keepends=True)
+        # Only leading comment metadata is ignored. Inline # signs and later
+        # records beginning with comment-like text are part of the dataset.
+        while lines and (not lines[0].strip() or lines[0].lstrip().startswith(("#", "//", "--"))):
+            lines.pop(0)
+        if not lines:
+            return None
+        text_content = "".join(lines)
+        if delimiter is None:
+            candidates = []
+            for separator in [",", ";", "\t", "|", ":"]:
                 try:
-                    temp_df = pd.read_csv(
-                        io.BytesIO(content_to_parse),
-                        encoding=enc,
-                        sep=sep,
-                        comment="#",
-                        on_bad_lines="skip"
-                    )
-                    if temp_df is not None and len(temp_df) > 0 and len(temp_df.columns) > 1:
-                        valid_col_names = sum(1 for c in temp_df.columns if "unnamed" not in str(c).lower() and str(c).strip() != "")
-                        quality = len(temp_df) * max(1, valid_col_names)
-                        if quality > max_quality_score:
-                            max_quality_score = quality
-                            best_candidate = temp_df
-                except Exception:
+                    first = next(csv.reader(io.StringIO(text_content), delimiter=separator, strict=True))
+                    candidates.append((len(first), separator))
+                except (csv.Error, StopIteration):
                     continue
-            if best_candidate is not None and max_quality_score > 5:
-                break
-
-        if best_candidate is not None:
-            return self._clean_headers(best_candidate)
-
+            if not candidates:
+                raise DataValidationException("Malformed delimited file header.")
+            delimiter = max(candidates, key=lambda item: item[0])[1]
+        reader = csv.reader(io.StringIO(text_content), delimiter=delimiter, strict=True)
         try:
-            fallback_df = pd.read_csv(io.BytesIO(content_to_parse), encoding="latin1", comment="#", on_bad_lines="skip")
-            if fallback_df is not None and not fallback_df.empty:
-                return self._clean_headers(fallback_df)
-        except Exception:
-            pass
-
-        return None
+            header = next(reader)
+            rows = []
+            for row in reader:
+                if not row:  # Physical blank line, rather than an explicit empty record.
+                    continue
+                if len(row) != len(header):
+                    raise DataValidationException(
+                        f"Delimited record ending at line {reader.line_num} has {len(row)} fields; expected {len(header)}. "
+                        "Correct the delimiters or quoting and upload again. No rows were imported."
+                    )
+                rows.append([value if value != "" else None for value in row])
+        except csv.Error as error:
+            raise DataValidationException(f"Malformed quoting near line {reader.line_num}. No rows were imported.") from error
+        if not rows:
+            return None
+        frame = pd.DataFrame(rows, columns=header)
+        # A parsed header is authoritative even if one of its labels is numeric.
+        frame.attrs['explicit_headers'] = True
+        return self._clean_headers(frame)
 
     def _parse_html_table(self, content: bytes) -> pd.DataFrame:
         """Parses HTML tables using built-in HTMLParser with fallback to pd.read_html."""
@@ -622,12 +595,12 @@ class DataIngestionService:
         """
         Intelligent Header Auto-Discovery:
         Detects if top rows are metadata/title banners or note blocks and elevates the genuine
-        column header row. Deduplicates and sanitizes column names, and drops trailing summary rows.
+        column header row. Deduplicates and sanitizes column names without deleting summary records.
         """
         if df.empty:
             return df
 
-        df = df.dropna(how="all").dropna(axis=1, how="all").reset_index(drop=True)
+        df = df.copy().reset_index(drop=True)
         if df.empty:
             return df
 
@@ -652,7 +625,11 @@ class DataIngestionService:
             best_header_idx = -1
             best_header_score = col_kw_hits * 10 + (len(current_cols) - unnamed_col_count) * 2
 
-        scan_limit = min(15, len(df))
+        # Explicit, nonempty column names already supplied by CSV/JSON or an
+        # earlier parser must not be replaced by a data row. Header discovery
+        # is reserved for raw positional columns or banner/unnamed layouts.
+        explicit_headers = bool(df.attrs.get('explicit_headers')) or (unnamed_col_count == 0 and len(set(current_cols)) == len(current_cols))
+        scan_limit = 0 if explicit_headers else min(15, len(df))
         for r_idx in range(scan_limit):
             row_vals = df.iloc[r_idx]
             non_null_vals = [str(v).strip() for v in row_vals if pd.notna(v) and str(v).strip() != ""]
@@ -660,6 +637,10 @@ class DataIngestionService:
             if not non_null_vals:
                 continue
 
+            if any(not isinstance(v, str) and pd.notna(v) for v in row_vals):
+                continue
+            if any(re.fullmatch(r"[+\-]?[\d,.%$€£₹()\s]+", v) or re.match(r"^\d{4}[-/]\d", v) for v in non_null_vals):
+                continue
             short_str_count = sum(1 for v in non_null_vals if len(v) < 45 and not v.startswith("{") and not v.startswith("["))
             kw_matches = sum(1 for v in non_null_vals if any(k in v.lower() for k in business_keywords))
             cell_coverage = len(non_null_vals) / max(1, len(df.columns))
@@ -678,7 +659,7 @@ class DataIngestionService:
             if len(df.columns) >= 3 and len(non_null_vals) <= 2 and kw_matches == 0:
                 score -= 15
 
-            if score > best_header_score and (cell_coverage >= 0.3 or kw_matches >= 1):
+            if score > best_header_score and cell_coverage >= 0.6:
                 best_header_score = score
                 best_header_idx = r_idx
 
@@ -694,30 +675,25 @@ class DataIngestionService:
             df = df.iloc[best_header_idx + 1:].reset_index(drop=True)
 
         clean_cols = []
-        seen_cols = {}
+        seen_cols = set()
         for i, col in enumerate(df.columns):
             col_str = str(col).strip()
-            if not col_str or col_str.lower().startswith("unnamed:") or col_str.isdigit():
+            if not col_str or col_str.lower().startswith("unnamed:") or (col_str.isdigit() and not explicit_headers and best_header_idx < 0):
                 col_name = f"col_{i+1}"
             else:
                 col_name = re.sub(r"[\r\n\t]+", " ", col_str).strip()
 
-            if col_name in seen_cols:
-                seen_cols[col_name] += 1
-                col_name = f"{col_name}_{seen_cols[col_name]}"
-            else:
-                seen_cols[col_name] = 1
+            base_name = col_name
+            suffix = 2
+            while col_name in seen_cols:
+                col_name = f"{base_name}_{suffix}"
+                suffix += 1
+            seen_cols.add(col_name)
 
             clean_cols.append(col_name)
 
         df.columns = clean_cols
 
-        while len(df) > 0:
-            last_row = df.iloc[-1]
-            first_val = str(last_row.iloc[0]).strip().lower() if len(last_row) > 0 and pd.notna(last_row.iloc[0]) else ""
-            if any(first_val.startswith(sum_kw) for sum_kw in ["total", "grand total", "summary", "average", "avg"]):
-                df = df.iloc[:-1]
-            else:
-                break
+        df.attrs['explicit_headers'] = True
 
         return df.reset_index(drop=True)

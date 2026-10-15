@@ -9,8 +9,9 @@ export const kpiApi = {
     return res.data;
   },
 
-  getDashboardSummary: async (): Promise<KPISummaryCard[]> => {
-    const res = await axiosClient.get<KPISummaryCard[]>('/kpis/summary');
+  getDashboardSummary: async (range?: string): Promise<KPISummaryCard[]> => {
+    const days = range && range !== 'ALL' ? parseInt(range, 10) : undefined;
+    const res = await axiosClient.get<KPISummaryCard[]>('/kpis/summary', { params: { days } });
     return res.data;
   },
 

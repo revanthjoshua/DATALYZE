@@ -41,12 +41,12 @@ class DatasetRepository(BaseRepository[UploadedDataset]):
             source_type=source_type
         )
         self.db.add(dataset)
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         self.db.refresh(dataset)
         return dataset
 
     def delete_all_datasets(self) -> int:
         """Deletes all dataset metadata records for current tenant."""
         count = self._tenant_query().delete()
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         return count

@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta, timezone
@@ -55,13 +56,21 @@ async def ingest_raw_data(
     Direct Real-Time Ingestion for Streaming, JSON, or Tabular records without uploading files.
     """
     tenant_id = current_user.company_id
-    raw_records = payload.get("records") or payload.get("data") or payload
+    # An explicitly supplied envelope is authoritative, even when empty. Falling
+    # back on truthiness turns {"records": []} into a bogus row and replaces data.
+    raw_records = payload["records"] if "records" in payload else payload.get("data", payload)
     if isinstance(raw_records, dict):
-        df = pd.DataFrame([raw_records])
-    elif isinstance(raw_records, list):
-        df = pd.DataFrame(raw_records)
-    else:
-        df = pd.DataFrame()
+        raw_records = [raw_records]
+    if (
+        not isinstance(raw_records, list)
+        or not raw_records
+        or any(not isinstance(record, dict) or not record for record in raw_records)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide a non-empty record object or a non-empty array of record objects in records or data.",
+        )
+    df = pd.DataFrame(raw_records)
 
     processing_service = DataProcessingService(db, tenant_id=tenant_id)
     return processing_service.process_dataframe(df, source_filename="realtime_stream_event.json")
@@ -83,9 +92,19 @@ def update_dataset(
     if not records or not isinstance(records, list):
         raise HTTPException(status_code=400, detail="Invalid records payload.")
 
+    dataset = db.query(UploadedDataset).filter(
+        UploadedDataset.company_id == tenant_id
+    ).order_by(UploadedDataset.created_at.desc()).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="No active dataset to edit.")
+    revision = payload.get("revision")
+    if not revision:
+        raise HTTPException(status_code=428, detail="Reopen the editor before saving; a complete dataset snapshot is required.")
+    if revision != f"{dataset.id}:{dataset.file_hash}":
+        raise HTTPException(status_code=409, detail="The dataset changed while you were editing. Reopen it to avoid overwriting newer data.")
     df = pd.DataFrame(records)
     processing_service = DataProcessingService(db, tenant_id=tenant_id)
-    return processing_service.process_dataframe(df, source_filename=filename)
+    return processing_service.process_dataframe(df, source_filename=filename, expected_revision=revision)
 
 
 @router.post("/load-sample", response_model=IngestionResponse)
@@ -175,10 +194,6 @@ def _ensure_dataset_loaded(tenant_id: int, db: Session) -> Optional[pd.DataFrame
     Ensures active dataset is restored into in-memory TenantDatasetStore
     from persistent storage_service / database across serverless cold starts.
     """
-    df = TenantDatasetStore.get_dataset(tenant_id)
-    if df is not None:
-        return df
-
     dataset = (
         db.query(UploadedDataset)
         .filter(UploadedDataset.company_id == tenant_id)
@@ -186,7 +201,14 @@ def _ensure_dataset_loaded(tenant_id: int, db: Session) -> Optional[pd.DataFrame
         .first()
     )
     if not dataset:
+        TenantDatasetStore.clear_dataset(tenant_id)
         return None
+
+    current_revision=f'{dataset.id}:{dataset.file_hash}'
+    metadata=TenantDatasetStore.get_metadata(tenant_id)
+    if metadata and metadata.get('revision')==current_revision:
+        return TenantDatasetStore.get_dataset(tenant_id)
+    TenantDatasetStore.clear_dataset(tenant_id)
 
     file_bytes = None
     if dataset.storage_path:
@@ -202,12 +224,16 @@ def _ensure_dataset_loaded(tenant_id: int, db: Session) -> Optional[pd.DataFrame
     if file_bytes:
         try:
             ingestion = DataIngestionService(tenant_id=tenant_id)
-            df_restored = ingestion.parse_raw_content(file_bytes, filename=dataset.filename)
+            df_restored = pd.read_csv(io.BytesIO(file_bytes), keep_default_na=False, na_values=[''], dtype={
+                item["name"]: str for item in (dataset.schema_metadata or [])
+                if item.get("data_type") in ["Identifier", "Text", "Categorical"]
+            })
             TenantDatasetStore.set_dataset(
                 tenant_id=tenant_id,
                 df=df_restored,
                 source_filename=dataset.filename,
-                detected_profile=dataset.detected_profile
+                detected_profile=dataset.detected_profile,
+                revision=current_revision
             )
             return df_restored
         except Exception as e:
@@ -226,14 +252,39 @@ def get_dataset_info(
     Returns active dataset metadata, column catalog, and statistical profiling.
     Restores from persistent database and disk storage if in-memory cache was cleared.
     """
+    _ensure_dataset_loaded(tenant_id, db)
     meta = TenantDatasetStore.get_metadata(tenant_id)
-    if not meta:
-        _ensure_dataset_loaded(tenant_id, db)
-        meta = TenantDatasetStore.get_metadata(tenant_id)
 
     if not meta:
         return {"has_dataset": False, "message": "No active dataset currently uploaded."}
     return {"has_dataset": True, **meta}
+
+
+@router.get("/dataset/editor")
+def get_editor_snapshot(
+    current_user: User = Depends(require_analyst_user),
+    db: Session = Depends(get_db)
+):
+    tenant_id = current_user.company_id
+    dataset = db.query(UploadedDataset).filter(
+        UploadedDataset.company_id == tenant_id
+    ).order_by(UploadedDataset.created_at.desc()).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="No active dataset to edit.")
+    # Restore current durable data rather than returning another worker's stale cache.
+    TenantDatasetStore.clear_dataset(tenant_id)
+    df = _ensure_dataset_loaded(tenant_id, db)
+    if df is None:
+        raise HTTPException(status_code=409, detail="Dataset could not be loaded. Editing is unavailable.")
+    if len(df) > 10000:
+        raise HTTPException(status_code=413, detail="The spreadsheet editor supports up to 10,000 rows. Download this dataset to edit it and upload the complete result.")
+    public = df[[c for c in df.columns if not str(c).startswith("_")]]
+    return {
+        "records": json.loads(public.to_json(orient="records", date_format="iso", double_precision=15)),
+        "columns": list(public.columns),
+        "total_rows": len(public),
+        "revision": f"{dataset.id}:{dataset.file_hash}",
+    }
 
 
 @router.get("/dataset/preview")

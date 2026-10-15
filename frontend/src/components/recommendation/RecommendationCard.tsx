@@ -57,7 +57,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
               {recommendation.category}
             </span>
             <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 font-semibold">
-              Impact: {recommendation.impact_level || 'High'}
+              Impact: {recommendation.impact_level || 'Not estimated'}
             </span>
           </div>
 
@@ -108,7 +108,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
           </div>
 
           <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed font-normal">
-            {recommendation.rationale || 'Derived from continuous metric variance analysis.'}
+            {recommendation.rationale || 'No supporting rationale was recorded; validate this recommendation before acting.'}
           </p>
 
           {/* Expandable Technical Traceability Pipeline for Data Investigation */}
@@ -138,8 +138,8 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
                 </div>
               </div>
               <div className="p-2 rounded-lg bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-[10px] text-neutral-600 dark:text-neutral-400 font-mono space-y-1">
-                <p>Status: Pipeline Verified • Category: {recommendation.category}</p>
-                <p>Confidence: High (Grounded on Ingested File Data)</p>
+                <p>Category: {recommendation.category}</p>
+                <p>Recommendation requires review; expected impact has not been measured.</p>
               </div>
             </div>
           )}
@@ -149,7 +149,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
       {/* Action status buttons */}
       {onStatusChange && (
         <div className="flex flex-wrap items-center justify-between border-t border-neutral-100 dark:border-neutral-800 pt-3 gap-2 text-xs">
-          <span className="text-[11px] text-neutral-500 font-medium font-mono">Triage Action:</span>
+          <span className="text-[11px] text-neutral-500 font-medium font-mono">Record task status:</span>
           <div className="flex items-center space-x-2">
             {recommendation.status !== 'in_progress' && (
               <Button

@@ -17,9 +17,9 @@ from app.services.noah_service import NoahService
 from app.schemas.noah_schema import NoahQueryRequest
 
 
-@pytest.fixture(scope="module")
-def setup_test_env():
-    db = SessionLocal()
+@pytest.fixture
+def setup_test_env(db_session, client):
+    db = db_session
     try:
         company = db.query(Company).filter(Company.id == 88).first()
         if not company:
@@ -42,7 +42,6 @@ def setup_test_env():
 
         token = create_access_token(data={"sub": str(user.id), "company_id": 88, "role": user.role})
         headers = {"Authorization": f"Bearer {token}"}
-        client = TestClient(app)
         return {"client": client, "headers": headers, "db": db, "tenant_id": 88}
     finally:
         db.close()
@@ -63,14 +62,14 @@ def test_excel_xlsx_with_formulas_and_banners():
             ["2026-08-02", "ORD-102", "$2,100.50", 15, "South"],
             ["2026-08-03", "ORD-103", "$890.00", 6, "East"],
             ["2026-08-04", "ORD-104", "$3,400.00", 22, "West"],
-            ["Total", None, "$7,840.50", 53, None]  # Trailing summary row to test stripping
+            ["Total", None, "$7,840.50", 53, None]  # Source summary row is retained for explicit preparation
         ]
         pd.DataFrame(raw).to_excel(writer, index=False, header=False, sheet_name="Monthly Sales")
 
     xlsx_bytes = buffer.getvalue()
     df = svc.parse_raw_content(xlsx_bytes, "financial_summary.xlsx")
 
-    assert len(df) == 4, f"Expected 4 data rows, got {len(df)}"
+    assert len(df) == 5, f"Expected all 5 source rows, got {len(df)}"
     assert "Date" in df.columns or "date" in [c.lower() for c in df.columns]
     assert "Revenue" in df.columns or "revenue" in [c.lower() for c in df.columns]
     assert "Units Sold" in df.columns or "units_sold" in [c.lower() for c in df.columns]
