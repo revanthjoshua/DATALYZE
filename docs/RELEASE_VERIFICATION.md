@@ -1,12 +1,12 @@
 # DATALYZE release verification
 
-Record updated 16 October 2026 for the actual Desktop project at `C:\Users\revan\OneDrive\Documents\Desktop\DATALYZE`. This records implemented behavior and the scope of verification. It does not certify that every analyst activity is equally mature or that the application is deployed to production.
+Record updated 17 October 2026 for the actual Desktop project at `C:\Users\revan\OneDrive\Documents\Desktop\DATALYZE`. This records implemented behavior and the scope of verification. It does not certify that every analyst activity is equally mature or that the application is deployed to production.
 
 ## Release identity and current status
 
 The prepared source is published as [draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3). The original published head, `718b6561018646cbf1a33ce61923da3b2b405a1b`, passed all three jobs in [release CI run 38759806470](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470): backend tests, the standard frontend build, and PostgreSQL 18 migration/readiness checks. This was verified on 16 October. The local Desktop source and public branch exclude runtime secrets, databases and uploaded datasets.
 
-A follow-up candidate updates CORS/rate-limit response handling, adds driver-specific 10-second database connection timeouts, and updates frontend dependencies. Its standard local frontend build and production-dependency audit passed; its new CI result must be recorded against its own commit before release. The successful original run does not cover subsequent changes. See [dependency security status](DEPENDENCY_SECURITY.md) for the remaining development-tool warnings.
+Application release `c959a021e65b0f076692ba14c165a32ef8e2ddbc` passed [all three CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/39003978728) on **17 October 2026**: **167 backend tests**, **8 frontend login/session tests**, the standard production build and production-dependency audit, and fresh/repeated PostgreSQL 18 migration with production readiness. Documentation-only updates after this commit do not change the verified application. The fixes preserve CORS/request-ID/retry headers on 429 responses, bound known database-driver connection setup, update frontend dependencies, and restore report links after session expiry without letting stale authentication responses overwrite a newer login. See [dependency security status](DEPENDENCY_SECURITY.md) for the remaining development-tool warnings.
 
 No Render services have been provisioned. The 18 cloud capability checks in [the acceptance map](POST_DEPLOY_VERIFICATION.md) remain **Pending**.
 
@@ -26,9 +26,9 @@ The full feature map, limits and operator settings are in `ANALYST_WORKSPACE.md`
 
 | Check | Evidence and scope |
 | --- | --- |
-| Backend suite | The original published head passed **156 tests in 16.59 seconds** in Linux release CI. Earlier Desktop validation passed 156 in 62.97 seconds on 15 October. These tests use an isolated database and mocked email; the follow-up candidate needs its own recorded result. |
+| Backend suite | The original published head passed **156 tests in 16.59 seconds** in Linux release CI. Earlier Desktop validation passed 156 in 62.97 seconds on 15 October. These tests use an isolated database and mocked email; the final application release passed **167 in 14.64 seconds** in [CI](https://github.com/revanthjoshua/DATALYZE/actions/runs/39003978728). |
 | TypeScript | Passed in the original Linux CI run and in the follow-up candidate's standard local `npm run build` on 16 October. |
-| Production frontend bundle | The original Linux CI run passed the standard `npm ci` / `npm run build` path with **2,401 modules**. After dependency updates, the standard local build passed on 16 October: **2,228 modules**, **63.79 KB CSS**, **363.39 KB application bundle**. No configuration-loader workaround was needed for that latest build. |
+| Production frontend bundle | The original Linux CI run passed the standard `npm ci` / `npm run build` path with **2,401 modules**. After dependency updates, the standard local build passed on 16 October: **2,228 modules**, **63.79 KB CSS**, **364.01 KB application bundle** after the final session-return fix. No configuration-loader workaround was needed for that latest build. |
 | Frontend dependency audit | The updated candidate returned **zero production-dependency findings** with `npm audit --omit=dev`. The full audit still reports **7 development-tool findings (5 high, 2 moderate)**; see `DEPENDENCY_SECURITY.md`. This is not a claim that every dependency is vulnerability-free. |
 | Render manifest | Validated against Render's official Blueprint JSON schema using `jsonschema`, with the latest repeat passing on **15 October**. This validates the manifest's structure; it does not provision services or execute a cloud build. |
 | PostgreSQL migration | Original Linux CI upgraded a fresh disposable **PostgreSQL 18** database through **`d91e5f7c201a`**, repeated the upgrade, checked migration head and all model tables, and passed production-mode readiness. Local migration/startup checks also passed earlier. Neither is a migration of a live customer database. |
@@ -49,6 +49,8 @@ A passing CI build does not establish a successful Render deployment, correct pr
 
 ### Browser evidence and scope
 
+On **17 October**, the current production frontend build was served locally. A clean login reopened `/analysis?report=5`. The disposable preview API was then restarted with a different test signing key to invalidate only preview sessions; reloading the same report redirected to login with the report destination preserved. Signing in again reopened **Regional review v2**, its company-only report link and review history. No production signing key, database or account was changed. Eight automated frontend regressions cover return-path validation and stale-session response guards.
+
 Observed flows included all main navigation destinations rendering; an 80-row preparation preview; saved contribution evidence reopening with reconciled results and caveats; creating and reviewing a stakeholder report; saving and previewing a library snapshot; importing the live 100-row API fixture; enabling its refresh schedule; and monitoring freshness/missingness results. The 14 October pass additionally verified login return paths, Viewer report access and disabled Viewer data writes, and an unattended public API refresh that reported unchanged content. These observations are narrower than an exhaustive check of every button and every role.
 
 On 15 October, the browser confirmed successful activation of **Sales baseline**. The active dataset header showed **`review_sales.csv`, 80 rows, 6 columns**. The legacy immutable snapshot's preview still shows its seven originally stored columns; activation excludes its generated helper column from the active source without rewriting that saved snapshot.
@@ -65,7 +67,7 @@ The database hosting DATALYZE's accounts, snapshots and jobs is separate from an
 
 ## Remaining environment-specific work
 
-1. Record the follow-up candidate's successful CI result and exact release commit. Provision the selected services in an authorized account after reviewing the recurring quote, then enter production domains and secrets securely. No hosting purchase or resource creation has been performed by this work.
+1. Provision the selected services in an authorized account after reviewing the recurring quote, then enter production domains and secrets securely. No hosting purchase or resource creation has been performed by this work.
 2. Run migrations and readiness checks in that environment. For existing data, first rehearse against a restored backup in a separate database; never reset the live database.
 3. Connect an intended business database/API and intended notification destinations, then verify a supervised refresh and an authorized email/webhook cycle using those actual services while the browser is closed.
 4. Validate cloud routing, login/report return paths, invitation links, deployment restart recovery, backup restoration and performance using representative data and concurrent traffic.

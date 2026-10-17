@@ -4,6 +4,10 @@ Updated 16 October 2026 from the current Desktop repository, its routes, and act
 
 The recorded baseline includes 156 backend tests, the standard frontend build and fresh/repeated PostgreSQL 18 migration/readiness passing in [Linux CI run 38759806470](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470) for original published head `718b6561018646cbf1a33ce61923da3b2b405a1b`, plus the bounded browser checks in `RELEASE_VERIFICATION.md`. [Draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3) is published. Follow-up middleware, connection-timeout and dependency fixes need their own recorded CI result; do not use the original head's pass to certify them. The latest standard local frontend build and production-dependency audit passed; seven development-tool audit findings remain documented in `DEPENDENCY_SECURITY.md`. Do not rerun completed checks just to recreate their record. First cloud deployment must verify the deployed commit and environment using the checks below. Record URL, deployed commit, time, test tenant, source revision, numerical result and evidence for each check; redact tokens and credentials.
 
+Application release `c959a021e65b0f076692ba14c165a32ef8e2ddbc` passed [all three CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/39003978728) on **17 October 2026**: **167 backend tests**, **8 frontend login/session tests**, the standard production build and production-dependency audit, and fresh/repeated PostgreSQL 18 migration with production readiness. Documentation-only updates after this commit do not change the verified application.
+
+All cloud outcomes below are still Pending; CI uses disposable fixtures, not deployed services.
+
 ## Fixtures and execution boundary
 
 Use new, clearly named acceptance tenants in the approved deployed environment; never replace a company's real active dataset. Tests that replace/delete data use only these disposable tenants. The existing pytest tests use an isolated in-process test application and must not be represented as live HTTP deployment tests.

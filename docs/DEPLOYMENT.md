@@ -18,17 +18,17 @@ The initial size is a starting point, not a measured production capacity guarant
 
 The manifest binds the API to Render's assigned port, migrates before starting, checks `/health/ready`, and uses the private database connection. An empty database IP allowlist prevents external database connections. The frontend publishes `./dist` relative to its `frontend` root and rewrites page URLs to `index.html`. Automatic deploys are disabled initially. [Blueprint reference](https://render.com/docs/blueprint-spec), [monorepo paths](https://render.com/docs/monorepo-support), [Python version selection](https://render.com/docs/python-version)
 
-## Access and release status — 16 October 2026
+## Access and release status — 17 October 2026
 
 The Render integration is connected, and the user explicitly confirmed Revanth's workspace for inspection and preparation. The last read-only inventory returned no existing services or PostgreSQL instances. Source publication and CI were separately authorized, and [draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3) now contains the rebuild. The old main-branch commit is not the rebuild.
 
-Original release head `718b6561018646cbf1a33ce61923da3b2b405a1b` passed [all three Linux CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470): 156 backend tests, standard frontend build, and fresh/repeated PostgreSQL 18 migration with production readiness. Follow-up CORS/rate-limit handling, connection-timeout and dependency changes need their own recorded CI result before deployment. See `RELEASE_VERIFICATION.md` and `DEPENDENCY_SECURITY.md`.
+Original release head `718b6561018646cbf1a33ce61923da3b2b405a1b` passed [all three Linux CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470): 156 backend tests, standard frontend build, and fresh/repeated PostgreSQL 18 migration with production readiness. Application release `c959a021e65b0f076692ba14c165a32ef8e2ddbc` passed [all three CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/39003978728) on **17 October 2026**: **167 backend tests**, **8 frontend login/session tests**, the standard production build and production-dependency audit, and fresh/repeated PostgreSQL 18 migration with production readiness. Documentation-only updates after this commit do not change the verified application. See `RELEASE_VERIFICATION.md` and `DEPENDENCY_SECURITY.md`.
 
-### Planning cost observed on 15 October
+### Planning cost observed on 17 October
 
-The figures below are the previous public price-page estimate, not a fresh account-specific quote or approval to spend.
+The figures below are the public price-page estimate, not a fresh account-specific quote or approval to spend.
 
-The [Render pricing page](https://render.com/pricing), checked on 15 October, listed **$25/month** for API compute `1c-2g` and **$19/month** for PostgreSQL compute `0.5c-1g`: **$44/month in compute**. Database storage is listed at $0.30/GB; allow up to $1.50/month for the requested 5 GB, subject to the provider's included-storage calculation. The static site has no compute charge. A Hobby workspace has no subscription charge; this plan does not authorize an upgrade to a paid workspace subscription. Bandwidth/build overages, tax, foreign-exchange/card charges, domain purchases and email-provider charges are additional if incurred. Confirm the final account-specific quote before creating anything. These figures are a planning estimate, not an agreed purchase or hard billing cap.
+The [Render pricing page](https://render.com/pricing), checked on 17 October, listed **$25/month** for API compute `1c-2g` and **$19/month** for PostgreSQL compute `0.5c-1g`: **$44/month in compute**. Database storage is listed at $0.30/GB; allow up to $1.50/month for the requested 5 GB, subject to the provider's included-storage calculation. The static site has no compute charge. A Hobby workspace has no subscription charge; this plan does not authorize an upgrade to a paid workspace subscription. Bandwidth/build overages, tax, foreign-exchange/card charges, domain purchases and email-provider charges are additional if incurred. Confirm the final account-specific quote before creating anything. These figures are a planning estimate, not an agreed purchase or hard billing cap.
 
 No resource has been provisioned, no application has been published to Render, and no recurring charge has been authorized. See `DEPLOYMENT_APPROVAL.md` for the concrete proposed release and approval boundary.
 
