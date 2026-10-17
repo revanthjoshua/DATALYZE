@@ -1,12 +1,12 @@
 # DATALYZE deployment approval
 
-Prepared 15 October 2026 from the actual Desktop project. This document describes the proposed next action; it does not authorize a purchase or claim a live deployment.
+Updated 16 October 2026 from the actual Desktop project. This document describes the proposed next action; it does not authorize a purchase or claim a live deployment.
 
 ## Release to deploy
 
-Use the reviewed analyst-workspace release from `revanthjoshua/DATALYZE`, with `render.yaml` at its root. Do not deploy the old main branch until it contains that release. The release preserves the existing code history and excludes local `.env` files, local databases, uploaded datasets, build output and test-runtime files.
+Use the reviewed analyst-workspace release from [draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3) in `revanthjoshua/DATALYZE`, with `render.yaml` at its root. Do not deploy the old main branch until it contains that release. The release preserves the existing code history and excludes local `.env` files, local databases, uploaded datasets, build output and test-runtime files.
 
-Application validation: 156 backend tests passed, TypeScript and the local production bundle passed, and the verification record describes browser, fixture connector and PostgreSQL concurrency checks. Linux CI and the first cloud deployment must be inspected separately; a prepared workflow is not a passed run.
+Original release head `718b6561018646cbf1a33ce61923da3b2b405a1b` passed [all three Linux CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470): 156 backend tests, standard frontend build, and fresh/repeated PostgreSQL 18 migration with production readiness. Follow-up middleware, database timeout and dependency changes have passed their standard local frontend build and production-dependency audit; record their new CI result and exact commit before deployment. Full dependency audit still reports seven development-tool findings, documented in `DEPENDENCY_SECURITY.md`. The verification record also preserves bounded browser, fixture connector and concurrency evidence. No cloud deployment has been verified.
 
 ## Proposed resources
 
@@ -16,7 +16,7 @@ Application validation: 156 backend tests passed, TypeScript and the local produ
 | Private application database `datalyze-db` | Singapore, PostgreSQL 18, 0.5 CPU / 1 GB, 5 GB storage | $19/month compute plus storage |
 | Public frontend `datalyze-web` | Render static site | No compute charge |
 
-The compute subtotal is **US$44/month**. At the listed $0.30/GB storage rate, reserve up to **US$1.50/month** for 5 GB, subject to included storage. This gives an estimated resource subtotal of up to **US$45.50/month**, before taxes and usage charges. Use the confirmed existing workspace without upgrading its subscription. A paid workspace subscription, if already active, may be charged separately; verify that account setting before provision. [Current Render pricing](https://render.com/pricing)
+These are public prices observed on **15 October**, not a current account-specific quote. The compute subtotal is **US$44/month**. At the listed $0.30/GB storage rate, reserve up to **US$1.50/month** for 5 GB, subject to included storage. This gives an estimated resource subtotal of up to **US$45.50/month**, before taxes and usage charges. Use the confirmed existing workspace without upgrading its subscription. A paid workspace subscription, if already active, may be charged separately; verify that account setting before provision. [Current Render pricing](https://render.com/pricing)
 
 Do not treat this estimate as an enforced billing cap. No optional add-ons, additional instances, custom-domain purchase or paid workspace upgrade are included. Stop for a revised decision if the account quote differs materially.
 
@@ -28,4 +28,4 @@ Do not treat this estimate as an enforced billing cap. No optional add-ons, addi
 4. Run the fresh database migrations, readiness, routing, authenticated report links, role/tenant and restart checks. Use synthetic or explicitly approved data for the first smoke test.
 5. Connect intended business sources and notification destinations only after they are identified and authorized. Uploads remain available until then. The public API fixture is not a company's business source.
 
-The user has confirmed workspace inspection and preparation only. Creating paid services and publishing this deployment remain pending approval of the account-specific cost and action.
+The user has approved workspace inspection/preparation and public source publication with a draft pull request and CI. This does **not** authorize paid hosting. Creating paid services and publishing the Render deployment remain pending approval of the account-specific cost and action. All 18 cloud capability checks in `POST_DEPLOY_VERIFICATION.md` remain Pending.

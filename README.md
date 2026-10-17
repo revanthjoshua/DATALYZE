@@ -77,9 +77,9 @@ From `backend`, with its virtual environment activated:
 python -m pytest tests -q
 ```
 
-This suite isolates its database, email and monitoring configuration. Older standalone audit scripts outside `backend/tests` predate the rebuild and are not the release suite. From `frontend`, run `npm run build` for TypeScript checking and the production bundle.
+This suite isolates its database, email and monitoring configuration. Older standalone audit scripts outside `backend/tests` predate the rebuild and are not the release suite. From `frontend`, run `npm test` for login/session regression checks and `npm run build` for TypeScript checking and the production bundle.
 
-The [release verification record](docs/RELEASE_VERIFICATION.md) records **156 passing backend tests on 15 October 2026**, frontend checks and browser workflows, local PostgreSQL migration/concurrency checks, live connector fixtures and one confirmed invitation delivery. It also explains the Windows sandbox build workaround and the limits of those checks. These are local verification results, not a completed production rollout or an exhaustive browser test of every control and role.
+The [release verification record](docs/RELEASE_VERIFICATION.md) links the published release and its CI results, frontend checks and browser workflows, PostgreSQL migration/concurrency checks, live connector fixtures and one confirmed invitation delivery. Standard frontend builds now pass locally and in Linux CI. The [dependency review](docs/DEPENDENCY_SECURITY.md) records remaining build-tool advisories. These results do not establish a completed production rollout or an exhaustive browser test of every control and role.
 
 ## Data and analysis boundaries
 

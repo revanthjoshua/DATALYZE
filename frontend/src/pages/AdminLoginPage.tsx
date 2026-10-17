@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { safeReturnPath } from '../utils/authRedirect';
+import { loginReturnPath } from '../utils/authRedirect';
 import {
   ShieldCheck,
   Lock,
@@ -23,7 +23,7 @@ export const AdminLoginPage: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = safeReturnPath(location.state?.returnTo);
+  const returnTo = loginReturnPath(location.state?.returnTo, location.search);
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');

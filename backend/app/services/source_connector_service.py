@@ -7,9 +7,31 @@ from urllib.parse import urlparse
 import httpx
 import pandas as pd
 from sqlalchemy import create_engine, MetaData, Table, select
+from sqlalchemy.engine import make_url
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_ROWS = 100000
+CONNECT_TIMEOUT_SECONDS = 10
+
+
+def database_engine_options(url):
+    """Bound connection setup for known synchronous drivers, not query time.
+
+    Driver keyword names differ. Leave other dialects (including SQLite)
+    unchanged instead of passing a keyword their driver may not support.
+    Optional database drivers still need to be installed by the operator.
+    """
+    timeout_keyword = {
+        'postgresql': 'connect_timeout',
+        'postgresql+psycopg2': 'connect_timeout',
+        'postgresql+psycopg': 'connect_timeout',
+        'postgresql+pg8000': 'timeout',
+        'mysql': 'connect_timeout',
+        'mysql+mysqldb': 'connect_timeout',
+        'mysql+pymysql': 'connect_timeout',
+        'mysql+mysqlconnector': 'connection_timeout',
+    }.get(make_url(url).drivername)
+    return {'connect_args': {timeout_keyword: CONNECT_TIMEOUT_SECONDS}} if timeout_keyword else {}
 
 
 def configured_sources(tenant_id):
@@ -52,7 +74,7 @@ def fetch_source(source):
                     raise ValueError('JSON source must contain a list of records.')
                 frame = pd.DataFrame(payload)
         else:
-            engine = create_engine(source['url'])
+            engine = create_engine(source['url'], **database_engine_options(source['url']))
             try:
                 with engine.connect() as connection:
                     if engine.dialect.name == 'postgresql':

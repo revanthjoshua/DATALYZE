@@ -55,24 +55,22 @@ app = FastAPI(
 # FRONTEND_URL controls email links; it does not silently widen this allowlist.
 cors_origins = list(settings.CORS_ORIGINS)
 
-# 1. Request ID Correlation Middleware (outermost)
-app.add_middleware(RequestIDMiddleware)
+# Starlette wraps newly added middleware around earlier entries. Keep CORS
+# and request IDs outside the limiter so early 429 responses retain them.
+app.add_middleware(TenantScopingMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
-# 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID"]
+    expose_headers=["X-Request-ID", "Retry-After"]
 )
 
-# 3. Rate Limit Middleware (protects sensitive auth routes)
-app.add_middleware(RateLimitMiddleware)
-
-# 4. Tenant Scoping Middleware
-app.add_middleware(TenantScopingMiddleware)
+# Outermost user middleware also covers CORS preflight responses.
+app.add_middleware(RequestIDMiddleware)
 
 # Mount API v1 Routes
 app.include_router(api_router, prefix=settings.API_V1_STR)

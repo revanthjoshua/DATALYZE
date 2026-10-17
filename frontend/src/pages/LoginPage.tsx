@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { safeReturnPath } from '../utils/authRedirect';
+import { loginReturnPath } from '../utils/authRedirect';
 import {
   ShieldCheck,
   UserCheck,
@@ -19,7 +19,7 @@ import { Button } from '../components/ui/Button';
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const returnTo = safeReturnPath(location.state?.returnTo);
+  const returnTo = loginReturnPath(location.state?.returnTo, location.search);
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] dark:bg-[#0C0D10] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden font-sans text-neutral-900 dark:text-neutral-100">

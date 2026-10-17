@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { expiredSessionLoginPath, isCurrentSessionAuthorization } from '../utils/authRedirect';
 
 function getApiBaseUrl(): string {
   const envUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -55,11 +56,16 @@ axiosClient.interceptors.response.use(
       url.includes('/auth/invite') ||
       url.includes('/auth/accept-invite');
 
-    if (error.response && error.response.status === 401 && !isAuthEndpoint) {
+    const requestAuthorization = error.config?.headers?.get?.('Authorization') ?? error.config?.headers?.Authorization;
+    if (error.response && error.response.status === 401 && !isAuthEndpoint &&
+        isCurrentSessionAuthorization(requestAuthorization, localStorage.getItem('datalyze_token'))) {
       localStorage.removeItem('datalyze_token');
       localStorage.removeItem('datalyze_user');
-      if (window.location.pathname !== '/login' && !window.location.pathname.startsWith('/login/')) {
-        window.location.href = '/login';
+      localStorage.removeItem('datalyze_company');
+      if (!/^\/login(?:\/|$)/i.test(window.location.pathname)) {
+        window.location.replace(expiredSessionLoginPath(
+          window.location.pathname + window.location.search + window.location.hash
+        ));
       }
     }
     return Promise.reject(error);

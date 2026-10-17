@@ -1,8 +1,16 @@
 # DATALYZE release verification
 
-Record prepared 15 October 2026 for the actual Desktop project at `C:\Users\revan\OneDrive\Documents\Desktop\DATALYZE`. This records implemented behavior and the scope of verification. It does not certify that every analyst activity is equally mature or that the application is deployed to production.
+Record updated 16 October 2026 for the actual Desktop project at `C:\Users\revan\OneDrive\Documents\Desktop\DATALYZE`. This records implemented behavior and the scope of verification. It does not certify that every analyst activity is equally mature or that the application is deployed to production.
 
-## Product delivered in the working tree
+## Release identity and current status
+
+The prepared source is published as [draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3). The original published head, `718b6561018646cbf1a33ce61923da3b2b405a1b`, passed all three jobs in [release CI run 38759806470](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470): backend tests, the standard frontend build, and PostgreSQL 18 migration/readiness checks. This was verified on 16 October. The local Desktop source and public branch exclude runtime secrets, databases and uploaded datasets.
+
+A follow-up candidate updates CORS/rate-limit response handling, adds driver-specific 10-second database connection timeouts, and updates frontend dependencies. Its standard local frontend build and production-dependency audit passed; its new CI result must be recorded against its own commit before release. The successful original run does not cover subsequent changes. See [dependency security status](DEPENDENCY_SECURITY.md) for the remaining development-tool warnings.
+
+No Render services have been provisioned. The 18 cloud capability checks in [the acceptance map](POST_DEPLOY_VERIFICATION.md) remain **Pending**.
+
+## Product delivered in the release
 
 - A connected **Brief → Prepare → Explore → Investigate → Share → Monitor** workspace, with separate data collection, metric directory, dashboard, export and administration pages. The inventory simulator is retired, and the dataset assistant identifies itself as rule-based.
 - Revision-protected data replacement, complete editor round-trips within the documented limit, recoverable replacement backups and preserved missing values/text identifiers. Malformed records are rejected. Preview application uses the parameters and revision captured by that preview.
@@ -18,11 +26,12 @@ The full feature map, limits and operator settings are in `ANALYST_WORKSPACE.md`
 
 | Check | Evidence and scope |
 | --- | --- |
-| Final backend suite | **156 passed in 62.97 seconds on 15 October.** Includes the final library helper-column correction and regression checks. Tests use an isolated database and mocked email. |
-| TypeScript | Passed on 13 October after the latest frontend edits. |
-| Production frontend bundle | Passed on 13 October: **2,401 modules**, **63.82 KB CSS**, **368.65 KB application bundle**, using the equivalent programmatic configuration described below. |
+| Backend suite | The original published head passed **156 tests in 16.59 seconds** in Linux release CI. Earlier Desktop validation passed 156 in 62.97 seconds on 15 October. These tests use an isolated database and mocked email; the follow-up candidate needs its own recorded result. |
+| TypeScript | Passed in the original Linux CI run and in the follow-up candidate's standard local `npm run build` on 16 October. |
+| Production frontend bundle | The original Linux CI run passed the standard `npm ci` / `npm run build` path with **2,401 modules**. After dependency updates, the standard local build passed on 16 October: **2,228 modules**, **63.79 KB CSS**, **363.39 KB application bundle**. No configuration-loader workaround was needed for that latest build. |
+| Frontend dependency audit | The updated candidate returned **zero production-dependency findings** with `npm audit --omit=dev`. The full audit still reports **7 development-tool findings (5 high, 2 moderate)**; see `DEPENDENCY_SECURITY.md`. This is not a claim that every dependency is vulnerability-free. |
 | Render manifest | Validated against Render's official Blueprint JSON schema using `jsonschema`, with the latest repeat passing on **15 October**. This validates the manifest's structure; it does not provision services or execute a cloud build. |
-| PostgreSQL migration | A fresh disposable **PostgreSQL 18** database upgraded through **`d91e5f7c201a`**; production-mode application startup against it passed locally. This is not a migration of a live customer database. |
+| PostgreSQL migration | Original Linux CI upgraded a fresh disposable **PostgreSQL 18** database through **`d91e5f7c201a`**, repeated the upgrade, checked migration head and all model tables, and passed production-mode readiness. Local migration/startup checks also passed earlier. Neither is a migration of a live customer database. |
 | Concurrent tenant reads | **3 tenants, 96 profile reads, 8 workers; zero errors and no mixed tenant data.** Latest measured median was **1.349 s**, p95 **2.043 s** while other tests were running. Earlier measurements were **0.279 s / 0.416 s**. These small-fixture runs check concurrency behavior, not production capacity. |
 | Concurrent replacements | **6 simultaneous replacements** based on one source revision produced **one success and five 409 stale-revision conflicts**. |
 | Real database connector | A read-only PostgreSQL source imported **2 fixture rows**, with the expected sum **30** verified. |
@@ -32,11 +41,11 @@ The full feature map, limits and operator settings are in `ANALYST_WORKSPACE.md`
 | Multiple input formats | CSV, XLSX and JSON analyst workflows are covered, including preparation, analysis, evidence, reporting and monitoring; larger editor fixtures verify that saving does not truncate to a preview. |
 | Browser verification | On 14 October, the report 5 link returned to its report after administrator login; a Viewer could read the report, while upload/edit/delete controls were disabled; all eight main routes loaded. The public API schedule recorded an unattended check with unchanged content. The fixture schedule was then disabled. On **15 October**, activating **Sales baseline** succeeded and the active dataset header showed **`review_sales.csv`, 80 rows, 6 columns**. See the browser scope below. |
 
-### Build procedure and local environment limit
+### Build procedure and remaining environment limits
 
-The standard build's TypeScript stage runs separately. On this Windows sandbox, Vite's normal configuration loader hit a parent-directory access restriction in esbuild. The successful alternative invokes Vite programmatically with the same application root, React plugin, path alias, TypeScript compilation options and vendor/chart/icon chunk configuration, from the frontend directory so Tailwind scans the correct source tree. It does not bypass TypeScript checking or replace the application with a different build.
+The release uses the standard frontend command, `npm ci && npm run build`; the build includes TypeScript checking. That path passed in Linux CI for the original published head. The follow-up dependency update also passed the standard local build on 16 October. The earlier 13 October programmatic Vite workaround is historical and is no longer needed for the latest local build.
 
-This workaround validates the frontend bundle. It does not prove that the provider's normal `npm ci && npm run build` path has already executed successfully in the cloud. That path remains part of first-deployment verification. Local Docker execution was not confirmed because the Docker daemon was unavailable; container configuration changes should not be represented as a passed container smoke test.
+A passing CI build does not establish a successful Render deployment, correct production origins, live email settings or a healthy deployed application. Local Docker execution was not confirmed because the Docker daemon was unavailable; container configuration changes must not be represented as a passed container smoke test.
 
 ### Browser evidence and scope
 
@@ -56,7 +65,7 @@ The database hosting DATALYZE's accounts, snapshots and jobs is separate from an
 
 ## Remaining environment-specific work
 
-1. Provision the selected services in an authorized account after reviewing the recurring quote, then enter production domains and secrets securely. No hosting purchase or resource creation has been performed by this work.
+1. Record the follow-up candidate's successful CI result and exact release commit. Provision the selected services in an authorized account after reviewing the recurring quote, then enter production domains and secrets securely. No hosting purchase or resource creation has been performed by this work.
 2. Run migrations and readiness checks in that environment. For existing data, first rehearse against a restored backup in a separate database; never reset the live database.
 3. Connect an intended business database/API and intended notification destinations, then verify a supervised refresh and an authorized email/webhook cycle using those actual services while the browser is closed.
 4. Validate cloud routing, login/report return paths, invitation links, deployment restart recovery, backup restoration and performance using representative data and concurrent traffic.

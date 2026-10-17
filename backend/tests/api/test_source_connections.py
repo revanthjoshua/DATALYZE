@@ -1,8 +1,34 @@
 import json
 import pandas as pd
+import pytest
 from sqlalchemy import create_engine
 from app.models.user import User
 from app.services.source_connector_service import fetch_source
+
+
+@pytest.mark.parametrize('driver,options', [
+    ('postgresql', {'connect_timeout': 10}),
+    ('postgresql+psycopg2', {'connect_timeout': 10}),
+    ('postgresql+psycopg', {'connect_timeout': 10}),
+    ('postgresql+pg8000', {'timeout': 10}),
+    ('mysql', {'connect_timeout': 10}),
+    ('mysql+mysqldb', {'connect_timeout': 10}),
+    ('mysql+pymysql', {'connect_timeout': 10}),
+    ('mysql+mysqlconnector', {'connection_timeout': 10}),
+    ('sqlite', None),
+])
+def test_database_source_passes_driver_specific_connection_timeout(monkeypatch, driver, options):
+    captured = {}
+    def unavailable_engine(url, **kwargs):
+        captured.update(kwargs)
+        raise ConnectionError('Driver details containing private credentials')
+    monkeypatch.setattr('app.services.source_connector_service.create_engine', unavailable_engine)
+    url = 'sqlite:///:memory:' if driver == 'sqlite' else f'{driver}://reader:fixture-password@example.invalid/source'
+    with pytest.raises(ValueError, match='Source could not be read') as error:
+        fetch_source({'type': 'database', 'url': url, 'table': 'facts'})
+    assert captured == ({'connect_args': options} if options else {})
+    assert 'private credentials' not in str(error.value)
+    assert 'fixture-password' not in str(error.value)
 
 
 def test_database_connector_reads_table(tmp_path):

@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { safeReturnPath } from '../utils/authRedirect';
+import { loginReturnPath } from '../utils/authRedirect';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../components/layout/AppLayout';
 import { LoginPage } from '../pages/LoginPage';
@@ -54,7 +54,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   if (token && user) {
     const isEmployee = (user.role || '').toLowerCase() === 'employee';
-    return <Navigate to={safeReturnPath(location.state?.returnTo)} replace />;
+    return <Navigate to={loginReturnPath(location.state?.returnTo, location.search)} replace />;
   }
 
   return <>{children}</>;
@@ -77,7 +77,7 @@ const AdminDashboardRoute: React.FC = () => {
 
 export const AppRouter: React.FC = () => {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <Routes>
         {/* Public Portal Routes */}
         <Route

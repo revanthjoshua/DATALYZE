@@ -65,6 +65,10 @@ jobs:
           package-manager-cache: false
       - name: Install locked frontend dependencies
         run: npm ci
+      - name: Audit shipped dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Verify login return paths and session isolation
+        run: npm test
       - name: Check TypeScript and build through the standard Vite config
         run: npm run build
 
