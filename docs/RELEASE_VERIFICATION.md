@@ -1,5 +1,15 @@
 # DATALYZE release verification
 
+## Free-hosting candidate — 19 October 2026
+
+- Existing Vercel team verified on Hobby; existing Neon project verified on Free (`free_v3`, PostgreSQL 18). No paid resources created.
+- **199 isolated backend tests passed**, including request/response limits, CORS, daily cron authorization, fair bounded scheduling and data-preserving rejection. Test local-file cleanup now uses temporary storage, independently of the developer's real storage folder.
+- **12 frontend tests passed**, including upload size, UTF-8 request size and hosted error handling. Standard production build and hosted packaging results are recorded separately when available.
+- Production was inspected read-only at `b7e21a89c4d2`. Its separate Neon verification copy upgraded to `d91e5f7c201a` twice; all pre-existing table row counts were unchanged. This is a migration rehearsal, not a production upgrade or a backup-recovery test.
+- A second, empty database on the verification branch migrated successfully for synthetic hosted acceptance tests. It uses a separate database role and signing secret. Branch-specific preview settings keep source refresh destinations empty and outbound email disabled; production environment variables remain unchanged.
+- Serverless limits: 4,000,000-byte uploads/results, 4,250,000-byte request envelopes, durable database storage, no per-instance database pool, authenticated daily work with a cooperative 240-second budget (2 sources, 10 tenants, 5 deliveries).
+- The 18 hosted capability checks, production rollout, unattended scheduled execution and recovery validation remain pending until observed. Unit test success does not establish production suitability for large data or heavy concurrent traffic.
+
 Record updated 17 October 2026 for the actual Desktop project at `C:\Users\revan\OneDrive\Documents\Desktop\DATALYZE`. This records implemented behavior and the scope of verification. It does not certify that every analyst activity is equally mature or that the application is deployed to production.
 
 ## Release identity and current status

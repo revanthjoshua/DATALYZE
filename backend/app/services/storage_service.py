@@ -419,7 +419,7 @@ class StorageService:
     Unified Storage Service for Datalyze.
     Selects the optimal storage backend based on configuration and environment:
     - Auto selects S3 if credentials provided
-    - In production/serverless, persists to Database (Neon PostgreSQL) with 100% free persistence
+    - In production/serverless, persists to the database within its storage quota
     - In local development, supports LocalStorage and DatabaseStorage
     """
 

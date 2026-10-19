@@ -48,6 +48,20 @@ def db_session():
 
 
 @pytest.fixture(autouse=True)
+def isolate_local_storage(monkeypatch, tmp_path):
+    """Deletion tests must never touch a developer's persisted dataset files."""
+    from app.services.storage_service import LocalStorageBackend, storage_service
+    original_init = LocalStorageBackend.__init__
+    isolated = str(tmp_path / 'storage')
+
+    def initialize(self, base_dir='storage'):
+        original_init(self, isolated if base_dir == 'storage' else base_dir)
+
+    monkeypatch.setattr(LocalStorageBackend, '__init__', initialize)
+    monkeypatch.setattr(storage_service._local_backend, 'base_dir', isolated)
+
+
+@pytest.fixture(autouse=True)
 def isolate_auth_rate_limit(monkeypatch):
     """Tests share an app, but each test starts with its own request window."""
     from app.middleware.rate_limit_middleware import rate_limiter
