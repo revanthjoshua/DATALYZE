@@ -80,6 +80,8 @@ def configure_schedule(db, tenant, source_id, enabled, interval, expected_revisi
     config = next((s for s in configured_sources(tenant) if s.get('id') == source_id), None)
     if config is None:
         raise HTTPException(404, 'Source not configured for this company.')
+    if enabled and settings.DATALYZE_SCHEDULER_MODE == 'vercel_daily' and interval < 86400:
+        raise HTTPException(422, 'This deployment checks sources once daily. Choose a 1,440-minute interval.')
     if enabled and config.get('allow_refresh') is not True:
         raise HTTPException(422, 'An administrator must explicitly allow automatic refresh for this connection.')
     # Serialize schedule edits with worker claims before inspecting the lease.
@@ -111,14 +113,20 @@ def configure_schedule(db, tenant, source_id, enabled, interval, expected_revisi
     return schedule_view(row)
 
 
-def refresh_sources(session_factory, now=None):
+def refresh_sources(session_factory, now=None, *, max_items=None, should_continue=None):
     from app.api.v1.analysis_routes import active, revision
     from app.services.data_processing_service import DataProcessingService
     now = now or utcnow()
     with session_factory() as db:
-        ids = [r[0] for r in db.query(SourceRefreshJob.id).filter(SourceRefreshJob.enabled.is_(True), SourceRefreshJob.next_run_at <= now).all()]
+        query = db.query(SourceRefreshJob.id).filter(SourceRefreshJob.enabled.is_(True), SourceRefreshJob.next_run_at <= now,
+            or_(SourceRefreshJob.lease_until.is_(None), SourceRefreshJob.lease_until <= now)).order_by(SourceRefreshJob.next_run_at, SourceRefreshJob.id)
+        if max_items is not None:
+            query = query.limit(max(0, max_items))
+        ids = [r[0] for r in query.all()]
     refreshed = 0
     for row_id in ids:
+        if should_continue is not None and not should_continue():
+            break
         with session_factory() as db:
             token = claim(db, SourceRefreshJob, row_id, now, SourceRefreshJob.enabled.is_(True) & (SourceRefreshJob.next_run_at <= now))
             if not token:
@@ -217,14 +225,18 @@ def send_notification(destination, payload, idempotency_key):
                 raise ValueError('Email provider did not return an acceptance ID.')
 
 
-def deliver_notifications(session_factory, now=None, sender=None):
+def deliver_notifications(session_factory, now=None, sender=None, *, max_items=100, should_continue=None):
     now = now or utcnow()
     sender = sender or send_notification
     with session_factory() as db:
         ids = [r[0] for r in db.query(NotificationOutbox.id).filter(NotificationOutbox.status.in_(['pending', 'retrying']),
-            NotificationOutbox.next_attempt_at <= now).order_by(NotificationOutbox.id).limit(100).all()]
+            NotificationOutbox.next_attempt_at <= now,
+            or_(NotificationOutbox.lease_until.is_(None), NotificationOutbox.lease_until <= now))
+            .order_by(NotificationOutbox.next_attempt_at, NotificationOutbox.id).limit(max(0, max_items)).all()]
     accepted = 0
     for row_id in ids:
+        if should_continue is not None and not should_continue():
+            break
         with session_factory() as db:
             token = claim(db, NotificationOutbox, row_id, now, NotificationOutbox.status.in_(['pending', 'retrying']) & (NotificationOutbox.next_attempt_at <= now))
             if not token:

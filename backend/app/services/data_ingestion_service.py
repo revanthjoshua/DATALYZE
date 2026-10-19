@@ -114,16 +114,18 @@ class DataIngestionService:
             await file.seek(0)
         except Exception:
             pass
-        content = await file.read()
+        # Read only enough to distinguish a permitted upload from an oversized one.
+        content = await file.read(settings.MAX_UPLOAD_SIZE_BYTES + 1)
         
         if not content or len(content) == 0:
             raise DataValidationException("Uploaded file is empty (0 bytes). Please select a valid data file.")
 
         # Check maximum file size limit
         if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
-            max_mb = settings.MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)
-            raise DataValidationException(
-                f"Uploaded file size ({len(content) / (1024 * 1024):.1f}MB) exceeds the maximum allowed limit of {max_mb}MB."
+            from fastapi import HTTPException
+            raise HTTPException(413,
+                f"This deployment accepts files up to {settings.MAX_UPLOAD_SIZE_BYTES / 1_000_000:g} MB "
+                f"({settings.MAX_UPLOAD_SIZE_BYTES:,} bytes). Choose a smaller file. The active dataset is unchanged."
             )
 
         df = self.parse_raw_content(content, filename)

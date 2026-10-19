@@ -161,10 +161,10 @@ class LocalStorageBackend(BaseStorageBackend):
 
 class DatabaseStorageBackend(BaseStorageBackend):
     """
-    100% Free, Serverless-Compatible Persistent Storage.
+    Database-backed persistent storage suitable for serverless hosts.
     Stores compressed dataset binary blobs directly in Neon PostgreSQL or SQLite database.
-    Guarantees cross-request dataset persistence across Vercel serverless function invocations
-    without requiring any external S3/cloud storage credentials.
+    Persists across Vercel function invocations without external object-storage
+    credentials. Database storage and transfer remain subject to the host plan.
     """
 
     def save(

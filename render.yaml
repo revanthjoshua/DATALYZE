@@ -1,5 +1,7 @@
-# Prepared configuration; creating this Blueprint provisions paid resources.
-# Review docs/DEPLOYMENT.md and Render's current quote before creating it.
+# DORMANT historical alternative: the user rejected paid Render hosting.
+# The approved budget is INR 0; use the existing Vercel/Neon Free projects.
+# Do not create this Blueprint: its service definitions provision paid resources.
+# See docs/DEPLOYMENT.md and docs/DEPLOYMENT_APPROVAL.md (19 October 2026).
 services:
   - type: web
     name: datalyze-api

@@ -11,6 +11,7 @@ from app.api.v1.router import api_router
 from app.middleware.tenant_middleware import TenantScopingMiddleware
 from app.middleware.request_id_middleware import RequestIDMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware
+from app.middleware.payload_limit_middleware import PayloadLimitMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,6 +20,8 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
     
     interval=int(os.environ.get('DATALYZE_MONITOR_INTERVAL_SECONDS','0'))
+    if settings.VERCEL and interval:
+        raise ValueError('Vercel cannot run a permanent monitor worker. Set DATALYZE_MONITOR_INTERVAL_SECONDS=0 and configure daily scheduling.')
     if interval and not 60 <= interval <= 86400:
         raise ValueError('DATALYZE_MONITOR_INTERVAL_SECONDS must be 0 or between 60 and 86400')
     worker=None
@@ -58,6 +61,8 @@ cors_origins = list(settings.CORS_ORIGINS)
 # Starlette wraps newly added middleware around earlier entries. Keep CORS
 # and request IDs outside the limiter so early 429 responses retain them.
 app.add_middleware(TenantScopingMiddleware)
+app.add_middleware(PayloadLimitMiddleware, max_request_bytes=settings.MAX_REQUEST_SIZE_BYTES,
+                   max_response_bytes=settings.MAX_RESPONSE_SIZE_BYTES)
 app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(

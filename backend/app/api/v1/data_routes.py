@@ -9,6 +9,8 @@ import pandas as pd
 from fastapi import APIRouter, Depends, UploadFile, File, Response, Query, Body, HTTPException
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.config import settings
+from app.services.payload_limits import check_json_response, check_response_size
 from app.schemas.data_schema import IngestionResponse
 from app.services.data_ingestion_service import DataIngestionService
 from app.services.data_processing_service import DataProcessingService
@@ -22,6 +24,16 @@ from app.models.uploaded_dataset import UploadedDataset
 logger = logging.getLogger("datalyze.data")
 
 router = APIRouter(prefix="/data", tags=["Data Ingestion & Pipeline"])
+
+
+@router.get("/capabilities")
+def data_capabilities(current_user: User = Depends(get_current_user)):
+    return {
+        "max_upload_bytes": settings.MAX_UPLOAD_SIZE_BYTES,
+        "max_request_bytes": settings.MAX_REQUEST_SIZE_BYTES,
+        "max_response_bytes": settings.MAX_RESPONSE_SIZE_BYTES,
+        "editor_max_rows": 10000,
+    }
 
 
 @router.post("/upload", response_model=IngestionResponse)
@@ -279,12 +291,14 @@ def get_editor_snapshot(
     if len(df) > 10000:
         raise HTTPException(status_code=413, detail="The spreadsheet editor supports up to 10,000 rows. Download this dataset to edit it and upload the complete result.")
     public = df[[c for c in df.columns if not str(c).startswith("_")]]
-    return {
+    snapshot = {
         "records": json.loads(public.to_json(orient="records", date_format="iso", double_precision=15)),
         "columns": list(public.columns),
         "total_rows": len(public),
         "revision": f"{dataset.id}:{dataset.file_hash}",
     }
+    check_json_response(snapshot, "The complete editor snapshot")
+    return snapshot
 
 
 @router.get("/dataset/preview")
@@ -325,6 +339,7 @@ def download_active_dataset(
         filename = f"{os.path.splitext(filename)[0]}.csv"
 
     csv_data = df.to_csv(index=False)
+    check_response_size(csv_data, "This CSV download")
     return Response(
         content=csv_data,
         media_type="text/csv",

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { payloadErrorDetail } from '../utils/payloadLimits';
 import { expiredSessionLoginPath, isCurrentSessionAuthorization } from '../utils/authRedirect';
 
 function getApiBaseUrl(): string {
@@ -47,7 +48,14 @@ axiosClient.interceptors.request.use(
 // Response interceptor: Auto handle 401 on protected requests without interfering with auth forms
 axiosClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    if (error.response) {
+      const detail = await payloadErrorDetail(error.response.data, error.response.status);
+      if (detail) {
+        error.response.data = { detail };
+        error.message = detail;
+      }
+    }
     const url = error.config?.url || '';
     const isAuthEndpoint =
       url.includes('/auth/login') ||

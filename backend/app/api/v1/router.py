@@ -32,3 +32,6 @@ api_router.include_router(prediction_router)
 api_router.include_router(recommendation_router)
 api_router.include_router(noah_router)
 api_router.include_router(inventory_router)
+
+from app.api.v1 import internal_cron_routes
+api_router.include_router(internal_cron_routes.router)

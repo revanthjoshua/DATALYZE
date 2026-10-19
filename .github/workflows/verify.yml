@@ -41,7 +41,7 @@ jobs:
         with:
           python-version: '3.12.14'
       - name: Install backend dependencies
-        run: python -m pip install -r backend/requirements.txt
+        run: python -m pip install -r backend/requirements-dev.txt
       - name: Run isolated backend suite
         # conftest also enforces an in-memory DB and replaces email delivery.
         run: python -m pytest backend/tests -q -p no:cacheprovider --tb=short
@@ -110,7 +110,7 @@ jobs:
         with:
           python-version: '3.12.14'
       - name: Install backend dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -r requirements-dev.txt
       - name: Migrate a fresh database to the current head
         run: python -m alembic upgrade head
       - name: Confirm migration can be repeated safely

@@ -71,9 +71,10 @@ Open <http://localhost:5173>, register a company administrator, and upload data 
 
 ## Verification
 
-From `backend`, with its virtual environment activated:
+From `backend`, with its virtual environment activated, install the test dependencies before running the suite. Deployment installs use `requirements.txt`; `requirements-dev.txt` includes that runtime file plus pytest tools.
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python -m pytest tests -q
 ```
 
@@ -91,8 +92,10 @@ The [release verification record](docs/RELEASE_VERIFICATION.md) links the publis
 
 ## Deployment
 
-The [post-deployment verification plan](docs/POST_DEPLOY_VERIFICATION.md) defines concrete checks for all 18 analyst activities, tenant isolation and recovery. The GitHub workflow in `.github/workflows/verify.yml` runs isolated backend tests, the standard Linux frontend build, and fresh PostgreSQL 18 migrations; inspect its run results before deploying.
+The current budget is **₹0**. The user selected the existing **Vercel frontend/backend with Neon Free PostgreSQL** and rejected the paid Render proposal. On **19 October 2026**, Vercel Hobby was confirmed for frontend `datalyze-y9n8` and backend `datalyze`; Neon Free and PostgreSQL 18 were also confirmed. The root `render.yaml` is retained as a dormant historical configuration; do not provision it. Follow the [free deployment runbook](docs/DEPLOYMENT.md) and [authorization record](docs/DEPLOYMENT_APPROVAL.md).
 
-The chosen target is **Render API + Render static frontend + Render PostgreSQL 18 + Resend**. The root [render.yaml](render.yaml) prepares those services. Follow the [deployment runbook](docs/DEPLOYMENT.md) for production settings, migration, backups, trusted proxies, costs and first-deployment checks; see [automation configuration](docs/AUTOMATION.md) for refresh and notification setup.
+The free target suits a small, intermittent, personal/non-commercial deployment within account quotas. The Vercel configuration uses Python 3.12/FastAPI, database-backed storage and a 300-second function limit. Files and responses are capped at 4,000,000 bytes; complete requests at 4,250,000 bytes. Monitoring defaults to manual mode, with an opt-in daily cron job and bounded batches. Larger analyses remain available locally. See the runbook for provider limits and unresolved compatibility checks.
 
-Cloud resources have not been provisioned by this rebuild. A live rollout still needs an authorized hosting account, review of recurring costs, securely configured production values and validation against actual business sources. Local test accounts, databases and tenant datasets must not be published or promoted to production. Keep `.env` and credentials out of Git.
+An isolated Neon verification branch has been created; production data has not been modified. Verify backup plus migration recovery before changing production. Branch-specific preview settings fail closed until the intended database and URLs are configured; email, sources and notifications remain disabled there. Never run migrations automatically during Vercel builds or function startup. Preserve existing accounts, domains, datasets and secrets; do not copy local fixture users into production or activate paid resources.
+
+The [post-deployment verification plan](docs/POST_DEPLOY_VERIFICATION.md) defines checks for all 18 analyst activities, tenant isolation and recovery. The GitHub workflow runs backend/frontend tests, a production frontend build and fresh PostgreSQL 18 migrations. Historical release checks passed; serverless changes require their own checks and real Vercel build. A production rollout, migration recovery and all 18 hosted checks remain pending until recorded with evidence.

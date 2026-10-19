@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 .next/
+.vercel/
+.neon
 
 # Python & Environment
 __pycache__/

@@ -1,15 +1,17 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "fluid": true,
+  "functions": {
+    "app/main.py": {
+      "maxDuration": 300,
+      "excludeFiles": "{tests/**,storage/**,venv/**,.venv/**,__pycache__/**,**/__pycache__/**,.env*,*.db,*.sqlite*,*.log}"
     }
-  ],
-  "routes": [
+  },
+  "crons": [
     {
-      "src": "/(.*)",
-      "dest": "api/index.py"
+      "path": "/api/v1/internal/cron",
+      "schedule": "17 3 * * *"
     }
   ]
 }

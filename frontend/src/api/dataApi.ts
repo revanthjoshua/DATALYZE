@@ -1,8 +1,10 @@
 import axiosClient from './axiosClient';
+import { checkRequestSize, checkUploadSize } from './dataCapabilities';
 import { IngestionResponse } from '../types/data.types';
 
 export const dataApi = {
   uploadFile: async (file: File): Promise<IngestionResponse> => {
+    await checkUploadSize(file);
     const formData = new FormData();
     formData.append('file', file);
     const res = await axiosClient.post<IngestionResponse>('/data/upload', formData, {
@@ -12,6 +14,7 @@ export const dataApi = {
   },
 
   ingestRawData: async (payload: any): Promise<IngestionResponse> => {
+    await checkRequestSize(payload);
     const res = await axiosClient.post<IngestionResponse>('/data/ingest-raw', payload, {
       timeout: 120000,
     });
@@ -24,13 +27,11 @@ export const dataApi = {
   },
 
   updateDataset: async (records: any[], filename?: string, revision?: string): Promise<IngestionResponse> => {
+    const payload = { records, revision, filename: filename || 'edited_dataset.csv' };
+    await checkRequestSize(payload);
     const res = await axiosClient.put<IngestionResponse>(
       '/data/dataset',
-      {
-        records,
-        revision,
-        filename: filename || 'edited_dataset.csv',
-      },
+      payload,
       {
         timeout: 120000,
       }

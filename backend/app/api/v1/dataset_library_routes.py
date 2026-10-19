@@ -9,6 +9,7 @@ from app.middleware.auth_middleware import get_current_user, require_analyst_use
 from app.models.user import User
 from app.services.data_ingestion_service import DataIngestionService
 from app.services.dataset_library_service import DatasetLibraryService
+from app.services.payload_limits import check_response_size
 
 router = APIRouter(prefix='/datasets', tags=['Saved dataset library'])
 
@@ -68,7 +69,9 @@ def download_dataset(dataset_id: int, user: User = Depends(get_current_user), db
     for column in frame:
         frame[column] = frame[column].map(spreadsheet_safe)
     frame.columns = [spreadsheet_safe(column) for column in frame.columns]
-    return Response('\ufeff' + frame.to_csv(index=False), media_type='text/csv',
+    content = '\ufeff' + frame.to_csv(index=False)
+    check_response_size(content, 'This saved dataset download')
+    return Response(content, media_type='text/csv',
                     headers={'Content-Disposition': f'attachment; filename="saved-dataset-{dataset_id}.csv"', 'X-Content-Type-Options': 'nosniff'})
 
 

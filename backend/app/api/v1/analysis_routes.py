@@ -1,4 +1,5 @@
 from app.services.evidence_report import evidence_document
+from app.services.payload_limits import check_response_size
 import html
 import io
 import os
@@ -74,7 +75,7 @@ class NoteInput(BaseModel):
 @router.get('/records')
 def list_records(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     current = revision(active(db,user.company_id))
-    rows = db.query(AnalysisRecord).filter(AnalysisRecord.company_id == user.company_id, AnalysisRecord.kind.notin_(['import_preview','saved_dataset','dataset_state','stakeholder_report','report_review'])).order_by(AnalysisRecord.id.desc()).limit(200).all()
+    rows = db.query(AnalysisRecord).filter(AnalysisRecord.company_id == user.company_id, AnalysisRecord.kind.notin_(['import_preview','saved_dataset','dataset_state','stakeholder_report','report_review','monitor_attempt'])).order_by(AnalysisRecord.id.desc()).limit(200).all()
     return [present(row,current) for row in rows]
 
 
@@ -218,10 +219,12 @@ def download(record_id:int,user:User=Depends(get_current_user),db:Session=Depend
     row = db.query(AnalysisRecord).filter(AnalysisRecord.id==record_id,AnalysisRecord.company_id==user.company_id).first()
     if not row: raise HTTPException(404,'Record not found.')
     if row.kind == 'backup':
+        check_response_size(row.content['csv'], 'This backup download')
         return Response(row.content['csv'],media_type='text/csv',headers={'Content-Disposition':f'attachment; filename="dataset-backup-{row.id}.csv"'})
-    if row.kind in ['import_preview','saved_dataset','dataset_state','stakeholder_report','report_review']: raise HTTPException(404,'Record not found.')
+    if row.kind in ['import_preview','saved_dataset','dataset_state','stakeholder_report','report_review','monitor_attempt']: raise HTTPException(404,'Record not found.')
     stale = bool(row.dataset_revision and row.dataset_revision != revision(active(db,user.company_id)))
     document = evidence_document(row, stale)
+    check_response_size(document, 'This evidence report download')
     return Response(document,media_type='text/html',headers={'Content-Disposition':f'attachment; filename="datalyze-brief-{row.id}.html"'})
 
 
@@ -241,7 +244,10 @@ def monitor(user:User=Depends(get_current_user),db:Session=Depends(get_db)):
             'value':target.get('value'),'unit':target['direction'],'threshold':target['target'],
             'alert':target.get('target_met') is not True})
     latest=db.query(AnalysisRecord).filter_by(company_id=user.company_id,kind='monitor_check').order_by(AnalysisRecord.id.desc()).first()
-    interval=int(os.environ.get('DATALYZE_MONITOR_INTERVAL_SECONDS','0'))
+    from app.services.monitor_runner import scheduler_configuration
+    execution = scheduler_configuration()
+    attempt = db.query(AnalysisRecord).filter_by(company_id=user.company_id,kind='monitor_attempt').order_by(AnalysisRecord.id.desc()).first()
     return {'checked_at':datetime.now(timezone.utc).isoformat(),'revision':revision(dataset),'checks':checks,
-            'background':{'interval_seconds':interval,'last_check':latest.content.get('checked_at') if latest else None},
-            'mode':f'Background checks configured every {interval} seconds. See Automatic refresh and notifications for delivery status.' if interval else 'Evaluated when opened or refreshed, with a 60-second refresh while this tab is open. Background checks require administrator configuration.'}
+            'background':{**execution, 'last_check':latest.content.get('checked_at') if latest else None,
+                'last_attempt':attempt.content if attempt else None},
+            'mode':execution['description'] + ' This view also refreshes every 60 seconds while open.'}

@@ -34,6 +34,8 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { dataApi } from '../api/dataApi';
+import { getDataCapabilities } from '../api/dataCapabilities';
+import { formatByteLimit, type DataCapabilities } from '../utils/payloadLimits';
 import { IngestionResponse } from '../types/data.types';
 import { useTenant } from '../context/TenantContext';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +62,7 @@ export const DataPage: React.FC = () => {
   const [sampleLoading, setSampleLoading] = useState<boolean>(false);
   const [response, setResponse] = useState<IngestionResponse | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<DataCapabilities | null>(null);
   const [inputMode, setInputMode] = useState<'upload' | 'paste'>('upload');
   const [rawText, setRawText] = useState<string>('');
   const [pasteLoading, setPasteLoading] = useState<boolean>(false);
@@ -156,7 +159,10 @@ export const DataPage: React.FC = () => {
   };
 
   useEffect(() => {
+    let active = true;
     fetchActiveDataset(0, previewLimit);
+    getDataCapabilities().then(value => { if (active) setCapabilities(value); }).catch(() => { if (active) setCapabilities(null); });
+    return () => { active = false; };
   }, []);
 
   const handleFileUpload = async (file: File) => {
@@ -360,7 +366,7 @@ export const DataPage: React.FC = () => {
         navigate('/dashboard');
       }, 700);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to save dataset edits.', 'Save Failed');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to save dataset edits.', 'Save Failed');
     } finally {
       setEditorSaving(false);
     }
@@ -379,7 +385,7 @@ export const DataPage: React.FC = () => {
       window.URL.revokeObjectURL(url);
       toast.success('Active dataset downloaded successfully.', 'Export Complete');
     } catch (err: any) {
-      toast.error('Failed to download dataset file.', 'Download Error');
+      toast.error(err.response?.data?.detail || err.message || 'Failed to download dataset file.', 'Download Error');
     }
   };
 
@@ -572,6 +578,10 @@ export const DataPage: React.FC = () => {
           </div>
         )}
 
+        {capabilities && <p className="mb-4 text-xs text-neutral-500" role="status">
+          Maximum file size: {formatByteLimit(capabilities.max_upload_bytes)}.
+          {capabilities.max_response_bytes !== null && <> Complete editor snapshots and downloads must fit within {formatByteLimit(capabilities.max_response_bytes)}. Larger stored datasets remain saved.</>}
+        </p>}
         {inputMode === 'upload' ? (
           <div
             onDragEnter={handleDrag}

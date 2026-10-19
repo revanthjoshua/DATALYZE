@@ -11,6 +11,9 @@ os.environ["CORS_ORIGINS"] = '["http://localhost:5173", "http://127.0.0.1:5173"]
 os.environ["DATALYZE_SOURCES_JSON"] = "[]"
 os.environ["DATALYZE_NOTIFICATIONS_JSON"] = "[]"
 os.environ["DATALYZE_MONITOR_INTERVAL_SECONDS"] = "0"
+os.environ["DATALYZE_SCHEDULER_MODE"] = "manual"
+os.environ["CRON_SECRET"] = ""
+os.environ["VERCEL"] = "0"
 
 import pytest
 from fastapi.testclient import TestClient

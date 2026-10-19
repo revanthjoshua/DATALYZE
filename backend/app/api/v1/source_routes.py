@@ -49,7 +49,7 @@ class ScheduleInput(BaseModel):
 
 @router.get('/automation/status')
 def automation_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    import os
+    from app.services.monitor_runner import scheduler_configuration
     from app.models.automation import SourceRefreshJob, NotificationOutbox
     from app.services.automation_service import schedule_view, destinations
     try:
@@ -57,9 +57,10 @@ def automation_status(user: User = Depends(get_current_user), db: Session = Depe
         configuration_error = None
     except ValueError as error:
         channels, configuration_error = [], str(error)
+    execution = scheduler_configuration()
     recent = db.query(NotificationOutbox).filter_by(company_id=user.company_id).order_by(NotificationOutbox.id.desc()).limit(30).all()
     return {'schedule':schedule_view(db.query(SourceRefreshJob).filter_by(company_id=user.company_id).first()),
-            'worker_enabled':os.environ.get('DATALYZE_MONITOR_INTERVAL_SECONDS','0') != '0',
+            'worker_enabled':execution['mode'] == 'worker' and execution['configured'], 'execution':execution,
             'destinations':channels, 'configuration_error':configuration_error,
             'notifications':[{'id':r.id,'event':r.payload.get('event'),'destination_id':r.destination_id,
                 'status':r.status,'attempts':r.attempts,'created_at':r.created_at,

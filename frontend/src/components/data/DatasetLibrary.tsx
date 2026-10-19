@@ -1,5 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import axiosClient from '../../api/axiosClient';
+import { checkUploadSize, getDataCapabilities } from '../../api/dataCapabilities';
+import { formatByteLimit, type DataCapabilities } from '../../utils/payloadLimits';
 import {Button} from '../ui/Button';
 import {Card} from '../ui/Card';
 
@@ -13,6 +15,7 @@ function PreviewTable({columns,rows}:{columns:string[];rows:Record<string,unknow
 }
 
 export const DatasetLibrary:React.FC<{revision:string|null;onChanged:()=>Promise<void>;writable:boolean;columns:string[]}>=({revision,onChanged,writable,columns})=>{
+  const [capabilities,setCapabilities]=useState<DataCapabilities|null>(null);
   const [datasets,setDatasets]=useState<SavedDataset[]>([]);
   const [name,setName]=useState('');
   const [description,setDescription]=useState('');
@@ -28,15 +31,15 @@ export const DatasetLibrary:React.FC<{revision:string|null;onChanged:()=>Promise
   const [joinPreview,setJoinPreview]=useState<{result:any;settings:JoinSettings;datasetId:number}|null>(null);
   const uploadRef=useRef<HTMLInputElement>(null);
   const load=async()=>{setDatasets((await axiosClient.get('/datasets',{params:{include_archived:true}})).data);};
-  useEffect(()=>{load().catch(()=>setError('Could not load saved datasets. Refresh the page to try again.'));},[]);
+  useEffect(()=>{let active=true;load().catch(()=>{if(active)setError('Could not load saved datasets. Refresh the page to try again.');});getDataCapabilities().then(value=>{if(active)setCapabilities(value);}).catch(()=>{if(active)setCapabilities(null);});return()=>{active=false;};},[]);
   useEffect(()=>{setJoinPreview(null);},[revision,keys,how,cardinality,selected?.id]);
   const run=async(action:()=>Promise<void>)=>{
     setBusy(true);setError('');setNotice('');
-    try{await action();}catch(err:any){const detail=err.response?.data?.detail;setError(typeof detail==='string'?detail:'The dataset operation could not be completed. Review the fields and try again.');}finally{setBusy(false);}
+    try{await action();}catch(err:any){const detail=err.response?.data?.detail;setError(typeof detail==='string'?detail:err.message||'The dataset operation could not be completed. Review the fields and try again.');}finally{setBusy(false);}
   };
   const show=async(dataset:SavedDataset)=>{setSelected((await axiosClient.get(`/datasets/${dataset.id}/preview`)).data);setJoining(false);setJoinPreview(null);setKeys([{left:columns[0]||'',right:dataset.columns[0]||''}]);};
   const saveActive=()=>run(async()=>{await axiosClient.post('/datasets/save',{name:name.trim(),description,revision});await load();setNotice('Active dataset saved as an immutable snapshot.');setName('');setDescription('');});
-  const upload=async(file:File)=>run(async()=>{const form=new FormData();form.append('file',file);form.append('name',name.trim()||file.name);form.append('description',description);await axiosClient.post('/datasets/upload',form,{timeout:120000});await load();setNotice('Dataset added to the library. The active dataset has not changed.');setName('');setDescription('');});
+  const upload=async(file:File)=>run(async()=>{await checkUploadSize(file);const form=new FormData();form.append('file',file);form.append('name',name.trim()||file.name);form.append('description',description);await axiosClient.post('/datasets/upload',form,{timeout:120000});await load();setNotice('Dataset added to the library. The active dataset has not changed.');setName('');setDescription('');});
   const changeState=(dataset:SavedDataset)=>run(async()=>{const updated=(await axiosClient.post(`/datasets/${dataset.id}/state`,{archived:!dataset.archived,version:dataset.version})).data;await load();if(selected?.id===dataset.id){setSelected({...selected,...updated});setJoining(false);}setNotice(updated.archived?'Snapshot archived. You can restore it from Show archived.':'Snapshot restored.');});
   const activate=(dataset:SavedDataset)=>run(async()=>{await axiosClient.post(`/datasets/${dataset.id}/activate`,{revision:revision||''},{timeout:120000});await onChanged();await load();setJoinPreview(null);setNotice(`“${dataset.name}” is now active. The previous active source was backed up.`);});
   const download=(dataset:SavedDataset)=>run(async()=>{const response=await axiosClient.get(`/datasets/${dataset.id}/download`,{responseType:'blob'});const url=URL.createObjectURL(response.data);const link=document.createElement('a');link.href=url;link.download=`saved-dataset-${dataset.id}.csv`;link.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);setNotice('CSV downloaded. Formula-like text is escaped for spreadsheet safety.');});
@@ -48,7 +51,7 @@ export const DatasetLibrary:React.FC<{revision:string|null;onChanged:()=>Promise
       <div className="grid gap-3 md:grid-cols-2"><label className="text-sm">Snapshot name<input aria-label="Snapshot name" className={fieldClass} value={name} maxLength={200} placeholder="For example, September sales" onChange={event=>setName(event.target.value)}/></label><label className="text-sm">Description (optional)<input aria-label="Snapshot description" className={fieldClass} value={description} maxLength={2000} onChange={event=>setDescription(event.target.value)}/></label></div>
       <div className="flex flex-wrap gap-2"><Button disabled={busy||!revision||!name.trim()} onClick={saveActive}>Save active dataset</Button><Button variant="secondary" disabled={busy} onClick={()=>uploadRef.current?.click()}>Add another file to library</Button></div>
       <input ref={uploadRef} type="file" className="hidden" aria-label="Upload saved dataset" accept=".csv,.tsv,.txt,.json,.jsonl,.xlsx,.xls,.parquet,.pq,.docx,.pdf" onChange={event=>{const file=event.target.files?.[0];if(file)void upload(file);event.target.value='';}}/>
-      <p className="text-xs text-neutral-500">Up to 100 snapshots and 200 MB per company, including archived snapshots; 20 MB and 100,000 rows per snapshot. Additional files enter the library without replacing the active source.</p>
+      <p className="text-xs text-neutral-500">Up to 100 snapshots and 200 MB per company, including archived snapshots; 20 MB and 100,000 rows per stored snapshot.{capabilities&&<> Uploaded files are limited to {formatByteLimit(capabilities.max_upload_bytes)}{capabilities.max_response_bytes!==null?`; downloads must fit within ${formatByteLimit(capabilities.max_response_bytes)}`:''}.</>} Additional files enter the library without replacing the active source.</p>
     </div>}
     {error&&<p role="alert" className="text-sm text-red-600">{error}</p>}{notice&&<p role="status" className="text-sm text-emerald-700">{notice}</p>}
     <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={showArchived} onChange={event=>setShowArchived(event.target.checked)}/>Show archived snapshots</label>

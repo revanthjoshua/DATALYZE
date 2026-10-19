@@ -1,93 +1,98 @@
-# DATALYZE deployment decision and runbook
+# DATALYZE free deployment runbook
 
-Decision recorded on 13 October 2026: use **Render** for the Python API and React static site, **Render managed PostgreSQL 18** for application storage, and the existing **Resend** email integration. The user delegated this choice. This file records the choice so later work keeps the same target.
+Decision updated **19 October 2026**: the user rejected paid Render services and set a **₹0 hosting budget**. Use the existing **Vercel frontend and backend projects with Neon Free PostgreSQL**, wherever the rebuilt application fits. Preserve the Desktop project, published rebuild, existing domains and production data. The former Render proposal is superseded; `render.yaml` remains a dormant historical alternative and must not be provisioned.
 
-This is a prepared deployment, not a live deployment. No cloud resource was created, no payment was made, and no existing production database was changed. The root `render.yaml` is the deployment manifest.
+This document prepares a release. The existing Vercel team is confirmed on **Hobby**. Its frontend project is `datalyze-y9n8`, its backend project is `datalyze`, and both use the existing DATALYZE GitHub repository. Neon project `purple-cell-52986724` is confirmed on **Free** (`free_v3`) with PostgreSQL 18. No Vercel/Neon deployment of this release or production migration is claimed here. Do not activate trials, paid add-ons or upgrades, and do not downgrade or replace an existing account automatically.
 
-## Chosen configuration
+Before verification-branch creation on 19 October, the Neon dashboard showed one existing branch, approximately 0.03 CU-hours and 0.04 GB storage used, with negligible transfer. The account API confirmed a 1 GiB branch logical-size cap, ten allowed branches and a 21,600-second history window. These are observations at that time, not a reservation of future quota.
 
-| Resource | Configuration | Reason |
+A separate verification branch has now been created: `codex-release-verification-20261019` (`br-holy-star-azv1fzxn`), from production parent `br-late-base-az4po99q`. Its endpoint uses fixed 0.25 CU and the provider's default suspension setting. The Free plan rejected an explicit suspension override, so the default was retained. Creating this branch did not write to production. The copied data remains confidential; this is not a completed migration rehearsal, backup recovery test or hosted release verification.
+
+## Feasibility and limits
+
+The free target can support a small, intermittent analyst workspace with bounded datasets. It cannot provide the former always-running monitoring process or an unrestricted production capacity guarantee. Verify these current provider limits against the actual accounts before deployment:
+
+| Boundary | Limit and practical effect |
+| --- | --- |
+| Vercel eligibility and allowance | Hobby is for personal, non-commercial use. Its monthly allowance includes 4 active CPU hours, 360 GB-hours of provisioned memory and 100 GB fast data transfer. A commercial company deployment needs a different eligible arrangement; do not silently upgrade. Exhausting free quotas can interrupt availability. [Hobby plan](https://vercel.com/docs/plans/hobby) |
+| Function size and execution | Python functions have a 500 MB uncompressed bundle limit. Hobby Fluid Compute provides up to 300 seconds and 2 GB memory per function. The scientific dependency bundle and representative analyses must pass a real Vercel build/runtime test. [Function limits](https://vercel.com/docs/functions/limitations) |
+| Uploads and downloads | Vercel limits function request and response bodies to 4.5 MB. DATALYZE caps files and responses at 4,000,000 bytes and complete requests at 4,250,000 bytes on Vercel. Multipart overhead counts toward the request cap. File size does not predict expanded analysis memory. [Function limits](https://vercel.com/docs/functions/limitations) |
+| Scheduled monitoring | Hobby cron runs at most daily, with scheduling precision of up to 59 minutes within the scheduled hour. Each invocation consumes function allowance. It cannot promise minute-level alerts or an always-running worker. [Cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing) |
+| Neon capacity | The current Free plan lists 1 GB database storage, 100 CU-hours per project per month, 5 GB public network transfer and 10 branches. Existing and test workloads share project quotas; inspect remaining capacity before a branch or load test. [Neon pricing](https://neon.com/pricing) |
+| Neon recovery | Free recovery is limited to up to six hours or 1 GB of changes, with one snapshot. Compute suspends after inactivity. Keep a separate verified export before migration; this limited recovery window is not the only backup. [Neon pricing](https://neon.com/pricing) |
+
+Public plan facts were rechecked on **19 October 2026**. Account-specific observations are recorded above; inspect usage again before branch creation, load tests and promotion. Use the existing free service domains and email arrangement only within their confirmed allowance. A quota or compatibility failure is a reason to reduce the cloud workload or continue that operation locally, not authorization to incur charges.
+
+## Release and validation status
+
+The rebuild is preserved in [draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3), branch `codex/analyst-workspace-rebuild`. Do not deploy old `main` or assume a historical CI result covers a changed commit.
+
+Application commit `c959a021e65b0f076692ba14c165a32ef8e2ddbc` passed [all three CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/39003978728): 167 backend tests, eight frontend login/session tests, the standard production build and production dependency audit, and fresh/repeated PostgreSQL 18 migrations with readiness. Documentation-only commit `66cfbfaf7a5a7083eea3f7e0e3f257c4895be6f1` also passed [its CI run](https://github.com/revanthjoshua/DATALYZE/actions/runs/39023915280). Those results belong to the recorded release. The Vercel adaptation requires its own checks and actual provider build.
+
+Keep the evidence in [RELEASE_VERIFICATION.md](RELEASE_VERIFICATION.md). Seven development-tool dependency findings remain recorded in [DEPENDENCY_SECURITY.md](DEPENDENCY_SECURITY.md). The [post-deployment plan](POST_DEPLOY_VERIFICATION.md) supplies the 18 capability checks; none becomes a live pass merely because a local or CI test passed.
+
+## Inspect the existing deployment first
+
+1. Preserve the identified Vercel projects and inspect their domains, production commit, root directories, build settings and deployment protections. Hobby status is confirmed; remaining usage and personal/non-commercial eligibility still need to fit the release. Do not change billing settings.
+2. Preserve the identified Neon Free project and inspect its production branch, database, role and current schema. Recheck available capacity before rehearsal. Record identifiers and counts, never credentials or customer rows, in the release notes.
+3. Inspect environment variable names and scopes securely. Preserve production secrets, domains and stable signing keys. Preview environments must not inherit the production database or outbound notification credentials accidentally.
+4. Confirm how the existing production schema was created and its Alembic revision. Compare it with the rebuilt schema. If schema history is absent or incompatible, prepare and rehearse a data-preserving migration; do not blindly stamp a revision, reset tables or recreate the database.
+
+## Environment settings
+
+Set secret values in the provider's environment controls. Do not publish `.env`, database URLs, API keys, backup exports or local fixture accounts. Preview and production need separate scopes.
+
+Branch-specific preview settings have been added for `codex/analyst-workspace-rebuild`: database and application URLs deliberately fail closed until the isolated preview is ready, source and notification lists are empty, and email delivery is disabled. Replace only those preview placeholders with the selected isolated database and matching preview origins. Their presence is not a successful deployment, and they must not be promoted as production configuration.
+
+| Component | Setting | Required behavior |
 | --- | --- | --- |
-| API | Render Python, Singapore, `1c-2g`, one instance and one Uvicorn worker | A modest starting size for in-memory data analysis, with an always-running monitoring loop |
-| Application database | Render PostgreSQL 18, Singapore, `0.5c-1g`, 5 GB | Relational tenant storage, transactions, durable jobs and notification outbox |
-| Frontend | Render Static Site, React build from `frontend/dist` | Separate static delivery and page-route rewrites |
-| Email | Existing Resend integration | Invitation receipt has already been confirmed in local verification |
-| Runtime | Python 3.12.14 and Node 24.16.0 | Matches the local validation runtimes |
+| Backend project | Root directory | `backend`; inspect the existing project before changing its settings. |
+| Backend project | Runtime and build | Python 3.12; `backend/vercel.json` selects FastAPI with Fluid Compute and a 300-second maximum duration. Production installs use `requirements.txt`; `requirements-dev.txt` adds test dependencies. |
+| Backend | `ENVIRONMENT` | `production`, including protected previews. |
+| Backend | `DATABASE_URL` | SSL-enabled Neon pooled URL for the intended branch; use a distinct preview database. The serverless adaptation uses `NullPool` to avoid retaining client-side connection pools. |
+| Backend | `STORAGE_BACKEND` | `db`; serverless local files are not durable application storage. |
+| Backend | `SECRET_KEY` | Stable production secret; a separate preview secret. Do not rotate production sessions accidentally. |
+| Backend | `FRONTEND_URL` | Exact intended frontend origin, used in invitation/reset links. |
+| Backend | `CORS_ORIGINS` | JSON array of exact approved frontend origins. Avoid wildcard preview domains; add the selected preview URL explicitly. |
+| Backend | `MAX_UPLOAD_SIZE_BYTES` | At most `4000000` on Vercel; lower configured values are retained. |
+| Backend | `MAX_REQUEST_SIZE_BYTES`, `MAX_RESPONSE_SIZE_BYTES` | At most `4250000` and `4000000` respectively on Vercel; these caps are applied when `VERCEL=1`. Larger local limits do not override them. |
+| Backend | `DATALYZE_MONITOR_INTERVAL_SECONDS` | `0`; do not start a permanent loop inside Vercel functions. |
+| Backend | `DATALYZE_SCHEDULER_MODE` | `manual` during preview and migration. Change to `vercel_daily` only after the cron checks pass and daily processing is intended. |
+| Backend | `CRON_SECRET` | A separate random secret of at least 32 characters when daily scheduling is enabled. Keep it separate from `SECRET_KEY`; never place it in URLs or frontend settings. |
+| Backend | `DATALYZE_SOURCES_JSON` | `[]` during preview and migration verification. Configure only identified, approved business sources later. |
+| Backend | `DATALYZE_NOTIFICATIONS_JSON` | `[]` during preview and migration verification. |
+| Backend | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Preserve existing production settings securely. Leave delivery disabled in preview; do not send test email without recipient authorization. |
+| Frontend project | Root, build, output | `frontend`, `npm ci` / `npm run build`, `dist`; preserve SPA deep-link rewrites. |
+| Frontend | `VITE_API_BASE_URL` | The matching backend origin plus `/api/v1`; this public value is embedded at build time. Rebuild after changes. |
 
-The initial size is a starting point, not a measured production capacity guarantee. Monitor memory, analysis duration, storage and response times before increasing limits or concurrency. The selected API and database are paid services. Review the current total, including storage, traffic and email, in the provider's creation screen before provisioning. [Render pricing](https://render.com/pricing)
+Do not configure migrations in a Vercel build command, import handler or application startup. A preview build must never migrate the production database. Use the direct Neon connection securely for the explicit migration operation; keep the runtime on its intended pooled connection.
 
-The manifest binds the API to Render's assigned port, migrates before starting, checks `/health/ready`, and uses the private database connection. An empty database IP allowlist prevents external database connections. The frontend publishes `./dist` relative to its `frontend` root and rewrites page URLs to `index.html`. Automatic deploys are disabled initially. [Blueprint reference](https://render.com/docs/blueprint-spec), [monorepo paths](https://render.com/docs/monorepo-support), [Python version selection](https://render.com/docs/python-version)
+## Preview, migrate and release without replacing production data
 
-## Access and release status — 17 October 2026
+1. Select the exact candidate commit and require its tests, dependency review and build to pass. Deploy a preview from the existing rebuild branch; source publication approval does not mean `main` was merged.
+2. Use the existing verification branch above and recheck free quota before additional work. Treat its production-derived copy as confidential, protect the preview and restrict access. Use synthetic datasets and separate acceptance users for feature tests. Keep sources, cron and notifications disabled. Do not create redundant test branches.
+3. Check the actual Vercel Python bundle size and function startup. Check `/health/ready`, frontend/backend origin pairing, authenticated report links, request/response size errors and cold-start behavior. If the dependency bundle or workload exceeds free limits, record the failing operation and preserve the working local application.
+4. Before any live migration, make a secure backup/export of the existing production database and verify it restores into a separate test environment within available free capacity. Rehearse `alembic upgrade head` there, rerun it to confirm repeatability, and compare schema, tenant/user/report/dataset counts and representative checksums. Never use `drop_all`, seed/reset scripts or a destructive restore against production.
+5. Complete the 18 capability checks and tenant/role tests on the preview. Exercise small and near-limit fixtures, joins, statistics, forecasts, saved evidence, reports, permission denial and dataset revisions. Bound concurrency tests to available quotas; record actual latency and failures instead of extrapolating an unlimited capacity claim.
+6. Record the current production application deployment and recovery path. Once the candidate and migration rehearsal pass, apply the reviewed migration as one explicit operation using the existing production database, then promote the tested frontend/backend releases. Coordinate writes during migration as required by the actual schema changes. Preserve domains, accounts and datasets.
+7. Verify readiness and core user flows on the promoted deployment, then finish the live checks in `POST_DEPLOY_VERIFICATION.md`. Record the exact release, domains, runtime configuration and evidence. Do not remove the prior working deployment or backup before recovery is demonstrated.
 
-The Render integration is connected, and the user explicitly confirmed Revanth's workspace for inspection and preparation. The last read-only inventory returned no existing services or PostgreSQL instances. Source publication and CI were separately authorized, and [draft pull request #3](https://github.com/revanthjoshua/DATALYZE/pull/3) now contains the rebuild. The old main-branch commit is not the rebuild.
+Readiness verifies database connectivity and required tables; it does not prove email delivery, business-source access, every role or acceptable performance. Application rollback is separate from database rollback. Redeploy a prior app only if it is compatible with the current schema; recover data into a separate database for review instead of blindly downgrading or overwriting production.
 
-Original release head `718b6561018646cbf1a33ce61923da3b2b405a1b` passed [all three Linux CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/38759806470): 156 backend tests, standard frontend build, and fresh/repeated PostgreSQL 18 migration with production readiness. Application release `c959a021e65b0f076692ba14c165a32ef8e2ddbc` passed [all three CI jobs](https://github.com/revanthjoshua/DATALYZE/actions/runs/39003978728) on **17 October 2026**: **167 backend tests**, **8 frontend login/session tests**, the standard production build and production-dependency audit, and fresh/repeated PostgreSQL 18 migration with production readiness. Documentation-only updates after this commit do not change the verified application. See `RELEASE_VERIFICATION.md` and `DEPENDENCY_SECURITY.md`.
+## Sources, notifications and free monitoring
 
-### Planning cost observed on 17 October
+Neon holds DATALYZE's own users, tenant datasets, reports and job state. It does not supply a company's business records. Until a real source is identified, use uploads. Existing public API and database fixtures establish connector behavior only.
 
-The figures below are the public price-page estimate, not a fresh account-specific quote or approval to spend.
+Source allowlists and company IDs remain mandatory. Keep read-only database credentials separate from application database credentials. API imports are bounded snapshots without automatic pagination; see [AUTOMATION.md](AUTOMATION.md) for the connector contract. Provider body and runtime limits can be stricter than the general local limits.
 
-The [Render pricing page](https://render.com/pricing), checked on 17 October, listed **$25/month** for API compute `1c-2g` and **$19/month** for PostgreSQL compute `0.5c-1g`: **$44/month in compute**. Database storage is listed at $0.30/GB; allow up to $1.50/month for the requested 5 GB, subject to the provider's included-storage calculation. The static site has no compute charge. A Hobby workspace has no subscription charge; this plan does not authorize an upgrade to a paid workspace subscription. Bandwidth/build overages, tax, foreign-exchange/card charges, domain purchases and email-provider charges are additional if incurred. Confirm the final account-specific quote before creating anything. These figures are a planning estimate, not an agreed purchase or hard billing cap.
+The candidate config schedules `GET /api/v1/internal/cron` once daily at **03:17 UTC** (nominally **08:47 Asia/Calcutta**). Hobby timing is approximate within the scheduled hour. Keep `DATALYZE_SCHEDULER_MODE=manual` until verification is complete; the configured schedule alone must not run application work. To enable daily work, set `DATALYZE_SCHEDULER_MODE=vercel_daily` and a separate random `CRON_SECRET` of at least 32 characters. Vercel sends this secret in the `Authorization: Bearer …` header; unauthenticated and incorrectly authenticated calls must be rejected.
 
-No resource has been provisioned, no application has been published to Render, and no recurring charge has been authorized. See `DEPLOYMENT_APPROVAL.md` for the concrete proposed release and approval boundary.
+The daily cycle has a **240-second work budget**, capped at **two source refreshes, ten company checks and five notification deliveries**. It uses durable leases and exits instead of keeping a background loop alive. Verify authentication, disabled mode, due-job processing, bounded batches, lease recovery and duplicate suppression against isolated data before enabling it. Inspect actual invocation completion and backlog afterward. Work left pending waits for a later cycle, so a large tenant set or failed provider can delay monitoring beyond one day. Manual refresh remains available. Daily processing does not provide continuous alerts.
 
-## Production values
+Keep notifications empty until the destination and live test are authorized. The earlier invitation receipt does not verify a deployed alert or current sender configuration. Check provider acceptance and the intended recipient's receipt separately. Do not route real production notifications to test recipients.
 
-Enter values in the hosting dashboard's environment settings. Do not commit `.env`, source connection passwords, API tokens, database exports, or test databases.
+## Security and remaining release gates
 
-| Service | Variable | Value |
-| --- | --- | --- |
-| API | `DATABASE_URL` | Supplied automatically by the managed database reference |
-| API | `SECRET_KEY` | Generated by the manifest; keep it stable across redeploys |
-| API | `FRONTEND_URL` | Exact public frontend origin, such as `https://your-assigned-site.onrender.com`, without a trailing slash; used in invitation/reset links |
-| API | `CORS_ORIGINS` | JSON array containing that exact origin, e.g. `["https://your-assigned-site.onrender.com"]`; include a custom domain explicitly if used |
-| API | `RESEND_API_KEY` | Existing valid Resend credential, entered securely |
-| API | `RESEND_FROM_EMAIL` | Sender authorized by the configured Resend account/domain |
-| API | `DATALYZE_SOURCES_JSON` | `[]` until an actual business source is connected; see below |
-| API | `DATALYZE_NOTIFICATIONS_JSON` | `[]` until intended notification destinations are configured |
-| Frontend | `VITE_API_BASE_URL` | Exact public API URL **including `/api/v1`**, e.g. `https://your-assigned-api.onrender.com/api/v1`; this value is public build configuration |
+Verify rate limits and client-address handling in Vercel's actual proxy environment. An in-process limiter is local to one function instance; it does not establish a global abuse limit across horizontally scaled instances. Preserve application authorization and tenant checks, test rejected origins, and do not trust arbitrary forwarded headers.
 
-`CORS_ORIGINS` is authoritative. Old hosting domains, localhost, and `FRONTEND_URL` are not added implicitly. The default local configuration still permits localhost and 127.0.0.1. Changing `VITE_API_BASE_URL` requires rebuilding the frontend. Environment values marked `sync: false` are requested during initial Blueprint setup; later updates must be made in the service settings. [Environment behavior](https://render.com/docs/blueprint-spec)
-
-## First deployment
-
-1. Review draft pull request #3 and select the exact release commit after its required checks pass. Source publication has already excluded local datasets and secrets. Connect the reviewed release to the authorized Render account and select its root `render.yaml` as a Blueprint; do not deploy the old main-branch code or assume an earlier CI pass covers later commits.
-2. Review the resource names, region and recurring quote before creating the resources. This is the purchase/provisioning boundary; preparing this manifest does not cross it.
-3. Enter the production values above. Use final owned domains if already configured. If Render has not yet assigned service URLs, a first provisioning pass can use `https://deployment-pending.invalid` for `FRONTEND_URL`, `["https://deployment-pending.invalid"]` for `CORS_ORIGINS`, and `https://deployment-pending.invalid/api/v1` for `VITE_API_BASE_URL`. Those are deliberately nonfunctional placeholders. Keep the site out of use until the next step is complete.
-4. Read the actual assigned URLs from the dashboard, replace any placeholder values, and deploy both services again. Never assume a requested service name guarantees a particular public hostname.
-5. Confirm the migration succeeds and the API's `/health/ready` returns 200 with `status: ready`. Verify the frontend uses the intended API host and direct visits to `/analysis` and authenticated report links survive refresh and login.
-6. Register a company administrator on the fresh deployment, import a non-sensitive fixture, run preparation, statistics, forecasting and report sharing, then verify a Viewer cannot modify data. Use a second company to confirm tenant separation.
-7. Configure actual sources and destinations, perform one authorized notification test, then verify a due monitoring cycle and an automatic refresh while the browser is closed. Check recorded status and provider response; acceptance alone is not proof of inbox delivery.
-
-The readiness probe checks database access and required tables. It does not establish correct email credentials, source permissions, recipient delivery, or complete migration compatibility by itself. Render gates routing on its configured health check. [Health checks](https://render.com/docs/health-checks)
-
-### Client addresses and trusted proxies
-
-The application's rate limiter uses `request.client`, as supplied by the ASGI server. It does not parse raw `X-Forwarded-For` headers itself. Configure the server's trusted proxy IPs for the actual hosting network, using the provider's current guidance, so client addresses can be forwarded only by the intended proxy. Verify in the deployed environment that separate clients are distinguished and that a client-supplied forwarding header cannot change its rate-limit identity. Do not set the trusted proxy allowlist to `*` unless direct access is restricted to trusted proxies. Incorrect trust can let clients evade limits; missing trust can group all clients behind the proxy into one limit.
-
-## Business sources and monitoring
-
-The managed application database stores DATALYZE users, datasets, reports and jobs. It is not a substitute for a company's real business data. Until an actual business system is identified, use uploaded data. The public API used during validation is a connector fixture, not production business data.
-
-Configure `DATALYZE_SOURCES_JSON` as a JSON array of operator-approved connections. Every entry needs a stable `id`, a display `name`, its `type` (`database` or `api`) and the permitted numeric `company_ids`.
-
-- Database entries also need a credentialed `url`, fixed `table`, optional `schema`, and optional `columns`. Prefer PostgreSQL with a dedicated account that can only read the approved tables. Do not reuse the application's database administrator credential as a business-source credential.
-- API entries need a fixed HTTPS `url`; optional `headers` hold authentication, `format` can be `json` or `csv`, and `records_key` can identify a top-level JSON array. The current connector does not follow redirects or automatically paginate an API.
-- Set `allow_refresh: true` only after reviewing the source. Import it, review the preview, and explicitly enable the schedule from Monitor. Sources are bounded to 20 MB and 100,000 rows; larger or paginated systems need an upstream export or connector extension.
-
-Notifications use `DATALYZE_NOTIFICATIONS_JSON`. Each configured destination requires `id`, `name`, `type` (`email` or `webhook`), `company_ids` and `enabled: true`, plus `recipients` for email or `url` for a webhook. Check the current `automation_service.py` contract when adding optional authentication. Destinations start empty, preventing unintended messages.
-
-The manifest runs the monitoring cycle every 60 seconds. Individual source refresh intervals and monitor rules remain company settings; this does not poll every upstream source every minute. Jobs use persisted leases, revision checks and retries. Manual data changes pause a scheduled source until an administrator reviews and resumes it. Keep one API worker/instance for the initial deployment; test recovery and notification behavior before scaling or separating the scheduler. A stopped service cannot process due jobs until it starts again.
-
-## Migration and recovery
-
-For a fresh environment, the pre-deploy command is `alembic upgrade head`. Existing production data requires a backup and a migration rehearsal against a restored copy before applying that command to the live database. Do not run schema reset, `drop_all`, development seed scripts, or destructive restore commands against production.
-
-Render's paid databases support point-in-time recovery and on-demand exports. Confirm the available recovery window and test restoring into a **separate** database, validating tenant counts and sample datasets before any connection switch. Keep the original intact until the replacement has been checked. [Recovery and backups](https://render.com/docs/postgresql-backups)
-
-Application rollback and database rollback are separate decisions. Redeploy the previous known-good application only when it is compatible with the current schema. Do not blindly downgrade migrations or replace a live database; recover into a separate instance and review the data first.
-
-## Validation boundary
-
-Local evidence includes a real PostgreSQL 18 migration and concurrent tenant checks, a public HTTPS API import, production-mode startup, and user-confirmed invitation receipt. The original published head additionally passed Linux CI, including the standard frontend build and PostgreSQL 18 migration/readiness checks. The follow-up candidate requires its own successful run. On 15 October, `render.yaml` passed repeat validation against Render's official Blueprint JSON schema. Schema validation confirms manifest structure; CI confirms the exercised release checks. Neither verifies account entitlement, resource creation, assigned production domains, customer source credentials, cloud backups or deployment performance. See `RELEASE_VERIFICATION.md` for recorded results and `POST_DEPLOY_VERIFICATION.md` for all 18 pending cloud checks. Those require the authorized deployment and its actual services.
+Both target accounts' free plans have been verified. Remaining gates are applicable Hobby eligibility and remaining quota, the actual Vercel package build, existing-schema migration compatibility, backup recovery, hosted workload performance and all 18 live capability checks. Record each as passed, failed, constrained or pending using observed evidence. A working free preview is not evidence of an always-on commercial platform.
