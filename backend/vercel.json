@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "fastapi",
+  "regions": ["sin1"],
   "fluid": true,
   "functions": {
     "app/main.py": {
