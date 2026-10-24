@@ -354,7 +354,24 @@ export const DashboardPage: React.FC = () => {
         onRetry={fetchAllDashboardData}
         loadingSkeleton="card-grid"
       >
-        {!hasData ? (
+        {!hasData ? datasetInfo?.has_dataset ? (
+          <div className="bg-white dark:bg-[#15171C] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 sm:p-10 text-center space-y-4 shadow-xs">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-[#F4ECE4] dark:bg-[#271910] text-[#6B4226] dark:text-[#D5B79F] flex items-center justify-center">
+              <Database className="w-7 h-7" />
+            </div>
+            <div className="max-w-xl mx-auto space-y-2">
+              <h3 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
+                Dataset Loaded · No Monitored Metrics Yet
+              </h3>
+              <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                Your dataset is connected. Create or review KPI definitions to populate dashboard metrics and trends.
+              </p>
+            </div>
+            <Button variant="primary" size="md" onClick={() => navigate('/kpis')}>
+              Create or Review KPIs
+            </Button>
+          </div>
+        ) : (
           <div className="bg-white dark:bg-[#15171C] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 sm:p-10 text-center space-y-6 shadow-xs relative overflow-hidden">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-[#F4ECE4] dark:bg-[#271910] text-[#6B4226] dark:text-[#D5B79F] flex items-center justify-center shadow-xs">
               <UploadCloud className="w-7 h-7" />
@@ -432,7 +449,7 @@ export const DashboardPage: React.FC = () => {
               </Button>
             </div>
           </div>
-        ) : (
+        )) : (
           <div className="space-y-6">
             {datasetInfo && datasetInfo.has_dataset && (
               <div className="bg-white dark:bg-[#15171C] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">

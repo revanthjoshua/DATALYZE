@@ -17,12 +17,14 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { kpiApi } from '../api/kpiApi';
+import { dataApi } from '../api/dataApi';
 import { reportApi } from '../api/reportApi';
 import { KPISummaryCard, KPIDefinition } from '../types/kpi.types';
 import { formatKPIValue, formatPercentage } from '../utils/formatters';
 import { useTenant } from '../context/TenantContext';
 import { useToast } from '../context/ToastContext';
 import { useDateRange } from '../context/DateRangeContext';
+import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -33,11 +35,13 @@ import { StateView } from '../components/ui/StateView';
 
 export const KpisPage: React.FC = () => {
   const { company } = useTenant();
+  const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const { timeRange } = useDateRange();
 
   const [kpis, setKpis] = useState<KPISummaryCard[]>([]);
+  const [hasDataset, setHasDataset] = useState(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
@@ -66,6 +70,7 @@ export const KpisPage: React.FC = () => {
       setErrorMsg(null);
       const data = await kpiApi.getDashboardSummary(timeRange);
       setKpis(data);
+      setHasDataset(data.length === 0 ? (await dataApi.getDatasetInfo())?.has_dataset === true : false);
     } catch (err: any) {
       console.error('Failed to fetch KPIs', err);
       setErrorMsg('Failed to load metric baselines. Please verify backend connection.');
@@ -280,7 +285,7 @@ export const KpisPage: React.FC = () => {
   const dynamicEyebrow =
     totalMetrics > 0
       ? `${totalMetrics} Monitored Metric${totalMetrics === 1 ? '' : 's'}${criticalMetrics > 0 ? ` • ${criticalMetrics} Needing Attention` : ' • 100% Healthy Baselines'}`
-      : 'Metric Engine Ready • Awaiting Data';
+      : hasDataset ? 'Dataset Loaded • No Metrics Configured' : 'No Dataset Loaded';
 
   const [exportingCsv, setExportingCsv] = useState(false);
 
@@ -320,6 +325,8 @@ export const KpisPage: React.FC = () => {
             <Button
               variant="primary"
               size="sm"
+              disabled={!['company admin','company_admin','admin','platform super admin','super_admin','analyst','manager','employee'].includes((user?.role || '').toLowerCase())}
+              title={!['company admin','company_admin','admin','platform super admin','super_admin','analyst','manager','employee'].includes((user?.role || '').toLowerCase()) ? 'Ask a workspace administrator to create KPI definitions.' : undefined}
               onClick={() => setIsModalOpen(true)}
               leftIcon={<Plus className="w-4 h-4" />}
             >
@@ -338,17 +345,27 @@ export const KpisPage: React.FC = () => {
         loadingSkeleton="table"
         isEmpty={kpis.length === 0}
         emptyIcon={TrendingUp}
-        emptyTitle="No Business Metrics Available"
-        emptyDescription="Upload your business spreadsheet or report in the Data Pipeline to start discovering and tracking your key metrics."
+        emptyTitle={hasDataset ? 'No Metrics Configured Yet' : 'No Business Metrics Available'}
+        emptyDescription={hasDataset
+          ? 'A dataset is already connected. Create a custom KPI to start tracking its calculated value, or review the source data.'
+          : 'Upload a dataset in the Data Pipeline to generate and track business metrics.'}
         emptyAction={
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => navigate('/data')}
-            leftIcon={<TrendingUp className="w-3.5 h-3.5" />}
-          >
-            Go to Data Pipeline to Upload File
-          </Button>
+          hasDataset ? ['company admin','company_admin','admin','platform super admin','super_admin','analyst','manager','employee'].includes((user?.role || '').toLowerCase()) ? (
+            <Button variant="primary" size="sm" onClick={() => setIsModalOpen(true)} leftIcon={<Plus className="w-3.5 h-3.5" />}>
+              Create First KPI
+            </Button>
+          ) : (
+            <p className="text-xs text-neutral-500">Ask a workspace administrator to create KPI definitions.</p>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/data')}
+              leftIcon={<TrendingUp className="w-3.5 h-3.5" />}
+            >
+              Go to Data Pipeline to Upload File
+            </Button>
+          )
         }
       >
         {/* Category & Status Filter Pills */}

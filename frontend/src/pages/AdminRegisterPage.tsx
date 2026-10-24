@@ -15,6 +15,7 @@ import {
   AtSign,
 } from 'lucide-react';
 import { authApi } from '../api/authApi';
+import { registrationErrorMessage } from '../utils/registrationErrors.mjs';
 import { useToast } from '../context/ToastContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -102,7 +103,7 @@ export const AdminRegisterPage: React.FC = () => {
       toast.success('Admin account created successfully! Please sign in with your credentials.', 'Registration Complete');
       navigate('/login/admin');
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Failed to register administrator account. Please check your details.';
+      const msg = registrationErrorMessage(err);
       setError(msg);
       toast.error(msg, 'Registration Error');
     } finally {

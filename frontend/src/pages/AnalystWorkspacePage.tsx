@@ -11,6 +11,7 @@ import { SourceConnections } from '../components/data/SourceConnections';
 import { DatasetLibrary } from '../components/data/DatasetLibrary';
 import { AutomationPanel } from '../components/data/AutomationPanel';
 import { StakeholderReports } from '../components/data/StakeholderReports';
+import { toUtcMidnight } from '../utils/utcDates.mjs';
 
 const tabs = ['Brief', 'Prepare', 'Explore', 'Investigate', 'Share', 'Monitor'] as const;
 const format = (v: any) => v == null ? '—' : typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 5 }) : typeof v === 'object' ? JSON.stringify(v) : String(v);
@@ -117,7 +118,7 @@ export const AnalystWorkspacePage: React.FC = () => {
   const run = () => perform(async()=>{
     const parameters:any = method==='aggregate'?{metric,dimensions:[dimension],aggregation}:
       method==='formula'?{expression}:method==='compare'?{metric,dimension,baseline,comparison}:
-      method==='investigate'?{metric,date_column:dateColumn,dimension,split_date:split,...(baselineStart?{baseline_start_date:baselineStart}:{}),...(comparisonEnd?{comparison_end_date:comparisonEnd}:{}),...(drillColumn?{filters:{[drillColumn]:drillValue}}:{})}:{metric,date_column:dateColumn,horizon:Number(horizon)};
+      method==='investigate'?{metric,date_column:dateColumn,dimension,split_date:toUtcMidnight(split),...(baselineStart?{baseline_start_date:toUtcMidnight(baselineStart)}:{}),...(comparisonEnd?{comparison_end_date:toUtcMidnight(comparisonEnd)}:{}),...(drillColumn?{filters:{[drillColumn]:drillValue}}:{})}:{metric,date_column:dateColumn,horizon:Number(horizon)};
     const r=await axiosClient.post('/analysis/run',{method,title:`${method==='formula'?'Formula':metric} · ${method}`,parameters},{timeout:120000});
     setResult(r.data); await refresh();setMessage('Analysis saved with its method and dataset revision.');
   });
