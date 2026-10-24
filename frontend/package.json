@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vercel/oidc": "4.0.3",
     "axios": "^1.20.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.363.0",
@@ -29,5 +30,10 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
     "vite": "^7.3.7"
+  },
+  "overrides": {
+    "@vercel/cli-config": {
+      "zod": "4.6.6"
+    }
   }
 }
