@@ -357,25 +357,24 @@ class AuthService:
             is_used=False
         )
         self.db.add(reset_code)
-        self.db.commit()
-
-        # 4. Dispatch verification code via Resend transactional email
-        delivery = email_service.send_password_reset_otp_email(
-            to_email=user.email,
-            recipient_name=user.full_name,
-            otp_code=code,
-            expires_in_minutes=15
-        )
-        if not delivery.get("success"):
-            if settings.ENVIRONMENT == "production":
-                self.db.delete(reset_code)
-                self.db.commit()
-                raise DatalyzeException(
-                    status_code=502,
-                    detail="The verification email could not be delivered. Check the Resend production configuration and try again."
-                )
-            else:
-                logger.warning(f"Resend OTP delivery simulated for development/test: {delivery.get('error')}")
+        try:
+            self.db.flush()
+            delivery = email_service.send_password_reset_otp_email(
+                to_email=user.email,
+                recipient_name=user.full_name,
+                otp_code=code,
+                expires_in_minutes=15
+            )
+            if not isinstance(delivery, dict) or not delivery.get("success"):
+                raise RuntimeError("Email provider did not accept the verification code")
+            self.db.commit()
+        except Exception as exc:
+            # The old valid code stays usable when a replacement cannot be sent.
+            self.db.rollback()
+            raise DatalyzeException(
+                status_code=502,
+                detail="The verification email could not be sent. Check the email service configuration and try again."
+            ) from exc
 
         # 5. Mask target for privacy
         if "@" in raw_ident:

@@ -6,7 +6,7 @@ export interface RootCauseResult {
   dimension_value: string;
   contribution_percentage: number;
   explanation_text: string;
-  confidence_score: number;
+  confidence_score: number | null;
   created_at: string;
 }
 

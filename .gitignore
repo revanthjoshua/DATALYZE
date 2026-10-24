@@ -3,6 +3,8 @@ node_modules/
 dist/
 build/
 .next/
+.vercel/
+.neon
 
 # Python & Environment
 __pycache__/
@@ -15,14 +17,18 @@ venv/
 .venv/
 ENV/
 *.db
+*.db-*
+*.sqlite
+*.sqlite-*
 *.sqlite3
+*.sqlite3-*
 test_datalyze.db
 datalyze.db
 
 # Environment variables
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # IDE & OS files
 .DS_Store

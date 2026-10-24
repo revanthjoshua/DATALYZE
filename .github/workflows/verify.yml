@@ -1,0 +1,141 @@
+name: Verify DATALYZE
+
+'on':
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Verification only: no deployment token, repository write, or production secret.
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  STORAGE_BACKEND: db
+  RESEND_API_KEY: ''
+  DATALYZE_SOURCES_JSON: '[]'
+  DATALYZE_NOTIFICATIONS_JSON: '[]'
+  DATALYZE_MONITOR_INTERVAL_SECONDS: '0'
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
+      ENVIRONMENT: test
+      DATABASE_URL: 'sqlite:///:memory:'
+      SECRET_KEY: ci-only-not-a-production-signing-key-2026
+      CORS_ORIGINS: '["http://localhost:5173", "http://127.0.0.1:5173"]'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.14'
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-dev.txt
+      - name: Run isolated backend suite
+        # conftest also enforces an in-memory DB and replaces email delivery.
+        run: python -m pytest backend/tests -q -p no:cacheprovider --tb=short
+
+  frontend:
+    name: Frontend production build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_API_BASE_URL: /api/v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.16.0'
+          package-manager-cache: false
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Audit shipped dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Verify login return paths and session isolation
+        run: npm test
+      - name: Check TypeScript and build through the standard Vite config
+        run: npm run build
+
+  postgres-migrations:
+    name: PostgreSQL 18 migration and startup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:18
+        # These public credentials are only for this disposable CI container.
+        env:
+          POSTGRES_DB: datalyze_ci
+          POSTGRES_USER: datalyze_ci
+          POSTGRES_PASSWORD: ci-disposable-postgres-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U datalyze_ci -d datalyze_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
+      ENVIRONMENT: production
+      # No repository/environment secrets are used by this job.
+      DATABASE_URL: postgresql+psycopg2://datalyze_ci:ci-disposable-postgres-password@127.0.0.1:5432/datalyze_ci
+      SECRET_KEY: ci-only-not-a-production-signing-key-2026
+      CORS_ORIGINS: '["https://ci.invalid"]'
+      FRONTEND_URL: https://ci.invalid
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12.14'
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Migrate a fresh database to the current head
+        run: python -m alembic upgrade head
+      - name: Confirm migration can be repeated safely
+        run: python -m alembic upgrade head
+      - name: Verify revision, application tables, and production readiness
+        run: |
+          python - <<'PY'
+          from alembic.config import Config
+          from alembic.runtime.migration import MigrationContext
+          from alembic.script import ScriptDirectory
+          from fastapi.testclient import TestClient
+          from sqlalchemy import inspect
+          from app.core.database import Base, engine
+          from app.main import app
+
+          expected_heads = set(ScriptDirectory.from_config(Config("alembic.ini")).get_heads())
+          with engine.connect() as connection:
+              actual_heads = set(MigrationContext.configure(connection).get_current_heads())
+              assert actual_heads == expected_heads, "Database revision does not match migration head"
+              missing = set(Base.metadata.tables) - set(inspect(connection).get_table_names())
+              assert not missing, f"Migration omitted application tables: {sorted(missing)}"
+          # Production startup must work on the migrated schema without create_all.
+          with TestClient(app) as client:
+              response = client.get("/health/ready")
+              assert response.status_code == 200, response.text
+              assert response.json()["status"] == "ready"
+          print("PostgreSQL 18 migration, repeat migration, and production readiness verified.")
+          PY

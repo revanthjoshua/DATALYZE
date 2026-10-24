@@ -7,7 +7,11 @@ from app.services.inventory_service import InventoryService
 from app.middleware.auth_middleware import get_current_tenant_id, require_analyst_user
 from app.models.user import User
 
-router = APIRouter(prefix="/inventory", tags=["Smart Inventory Intelligence"])
+def retired_inventory():
+    from fastapi import HTTPException
+    raise HTTPException(410, 'Inventory operations have been retired. Analyze uploaded stock data in the Analyst Workspace; no physical transfers are executed.')
+
+router = APIRouter(prefix="/inventory", tags=["Retired inventory operations"], dependencies=[Depends(retired_inventory)])
 
 
 @router.get("/summary", response_model=InventoryDashboardSummary)

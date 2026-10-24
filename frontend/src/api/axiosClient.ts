@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { payloadErrorDetail } from '../utils/payloadLimits';
+import { expiredSessionLoginPath, isCurrentSessionAuthorization } from '../utils/authRedirect';
 
 function getApiBaseUrl(): string {
   const envUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -46,7 +48,14 @@ axiosClient.interceptors.request.use(
 // Response interceptor: Auto handle 401 on protected requests without interfering with auth forms
 axiosClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    if (error.response) {
+      const detail = await payloadErrorDetail(error.response.data, error.response.status);
+      if (detail) {
+        error.response.data = { detail };
+        error.message = detail;
+      }
+    }
     const url = error.config?.url || '';
     const isAuthEndpoint =
       url.includes('/auth/login') ||
@@ -55,11 +64,16 @@ axiosClient.interceptors.response.use(
       url.includes('/auth/invite') ||
       url.includes('/auth/accept-invite');
 
-    if (error.response && error.response.status === 401 && !isAuthEndpoint) {
+    const requestAuthorization = error.config?.headers?.get?.('Authorization') ?? error.config?.headers?.Authorization;
+    if (error.response && error.response.status === 401 && !isAuthEndpoint &&
+        isCurrentSessionAuthorization(requestAuthorization, localStorage.getItem('datalyze_token'))) {
       localStorage.removeItem('datalyze_token');
       localStorage.removeItem('datalyze_user');
-      if (window.location.pathname !== '/login' && !window.location.pathname.startsWith('/login/')) {
-        window.location.href = '/login';
+      localStorage.removeItem('datalyze_company');
+      if (!/^\/login(?:\/|$)/i.test(window.location.pathname)) {
+        window.location.replace(expiredSessionLoginPath(
+          window.location.pathname + window.location.search + window.location.hash
+        ));
       }
     }
     return Promise.reject(error);

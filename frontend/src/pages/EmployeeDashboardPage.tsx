@@ -21,11 +21,10 @@ import {
 import { kpiApi } from '../api/kpiApi';
 import { alertApi } from '../api/alertApi';
 import { recommendationApi } from '../api/recommendationApi';
-import { inventoryApi } from '../api/inventoryApi';
 import { KPISummaryCard } from '../types/kpi.types';
 import { Alert, Recommendation } from '../types/noah.types';
-import { InventoryDashboardSummary } from '../types/inventory.types';
 import { useAuth } from '../context/AuthContext';
+import { useDateRange } from '../context/DateRangeContext';
 import { useTenant } from '../context/TenantContext';
 import { useToast } from '../context/ToastContext';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -39,12 +38,13 @@ export const EmployeeDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const { company } = useTenant();
   const toast = useToast();
+  const { timeRange } = useDateRange();
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const [kpis, setKpis] = useState<KPISummaryCard[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [inventory, setInventory] = useState<InventoryDashboardSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
@@ -52,25 +52,24 @@ export const EmployeeDashboardPage: React.FC = () => {
     if (!isSilent) setLoading(true);
     else setRefreshing(true);
 
+    setError(null);
     try {
-      const [kpiData, alertData, recData, invData] = await Promise.all([
-        kpiApi.getDashboardSummary().catch(() => []),
-        alertApi.getAlerts().catch(() => []),
-        recommendationApi.getRecommendations().catch(() => []),
-        inventoryApi.getInventorySummary().catch(() => null),
+      const [kpiData, alertData, recData] = await Promise.all([
+        kpiApi.getDashboardSummary(timeRange),
+        alertApi.getAlerts(),
+        recommendationApi.getRecommendations(),
       ]);
 
       setKpis(kpiData);
       setAlerts(alertData);
       setRecommendations(recData);
-      setInventory(invData);
     } catch (err) {
-      console.error('Failed to load employee dashboard data', err);
+      setError('Could not load your workspace. Retry to view the latest data.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -102,7 +101,7 @@ export const EmployeeDashboardPage: React.FC = () => {
   const currency = company?.currency || 'USD';
   const unreadAlerts = alerts.filter((a) => !a.is_read);
   const activeRecommendations = recommendations.filter((r) => r.status !== 'completed' && r.status !== 'dismissed');
-  const hasData = kpis.length > 0 || alerts.length > 0 || recommendations.length > 0 || ((inventory?.items?.length || 0) > 0);
+  const hasData = kpis.length > 0 || alerts.length > 0 || recommendations.length > 0;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in font-sans">
@@ -111,7 +110,7 @@ export const EmployeeDashboardPage: React.FC = () => {
         stage={`Employee Workspace • ${company?.name || 'Company Operations'}`}
         stageIcon={<UserCheck className="w-4 h-4 text-blue-500" />}
         title={`Welcome, ${user?.full_name || 'Team Member'}`}
-        description="Daily operational tracking, actionable tasks, anomaly monitoring, and stock overview."
+        description="Review uploaded metrics, saved recommendations, and detected alerts."
         actions={
           <div className="flex items-center space-x-2">
             <Button
@@ -130,7 +129,7 @@ export const EmployeeDashboardPage: React.FC = () => {
         }
       />
 
-      <StateView isLoading={loading} loadingSkeleton="card-grid">
+      <StateView isLoading={loading} isError={!!error} errorMessage={error || undefined} onRetry={() => fetchDashboardData()} loadingSkeleton="card-grid">
         {!hasData ? (
           <div className="bg-white dark:bg-[#15171C] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 sm:p-10 text-center space-y-6 shadow-xs relative overflow-hidden">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-xs">
@@ -139,10 +138,10 @@ export const EmployeeDashboardPage: React.FC = () => {
 
             <div className="max-w-xl mx-auto space-y-2">
               <h3 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
-                Workspace Awaiting Business Data
+                No analysis available yet
               </h3>
               <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed font-normal">
-                No business data has been uploaded for this workspace yet. Upload an operational dataset (Excel, CSV, Word table, or PDF) in the Data Pipeline to start tracking telemetry, alerts, and assigned actions.
+                No metrics, recommendations, or alerts are available. Upload or review your dataset in Data & Preparation, then explore it in Analyst Workspace.
               </p>
             </div>
 
@@ -155,14 +154,14 @@ export const EmployeeDashboardPage: React.FC = () => {
                 leftIcon={<FileSpreadsheet className="w-4 h-4" />}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
-                Go to Data Pipeline to Upload File
+                Open Data & Preparation
               </Button>
             </div>
           </div>
         ) : (
           <div className="space-y-6">
             {/* Top Quick Stats Strip */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Card className="p-4 border-l-4 border-l-blue-500 flex items-center justify-between">
                 <div>
                   <span className="text-[11px] font-mono uppercase text-neutral-500 font-semibold block">
@@ -205,19 +204,6 @@ export const EmployeeDashboardPage: React.FC = () => {
                 </div>
               </Card>
 
-              <Card className="p-4 border-l-4 border-l-purple-500 flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-mono uppercase text-neutral-500 font-semibold block">
-                    Stock Health
-                  </span>
-                  <p className="text-xl font-bold text-neutral-900 dark:text-neutral-100 font-mono mt-1">
-                    {inventory ? `${inventory.total_items} Items` : 'Active'}
-                  </p>
-                </div>
-                <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600">
-                  <Boxes className="w-5 h-5" />
-                </div>
-              </Card>
             </div>
 
             {/* Key Metric Summary Cards */}
@@ -246,7 +232,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                         </span>
                         <Badge
                           variant={
-                            kpi.status === 'healthy'
+                            kpi.percentage_change == null ? 'neutral' : kpi.status === 'healthy'
                               ? 'healthy'
                               : kpi.status === 'warning'
                               ? 'warning'
@@ -255,7 +241,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                           size="xs"
                           dot
                         >
-                          {kpi.status}
+                          {kpi.percentage_change == null ? 'No comparison' : kpi.status}
                         </Badge>
                       </div>
 
@@ -288,7 +274,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 flex items-center space-x-2">
                     <Lightbulb className="w-4 h-4 text-emerald-500" />
-                    <span>Assigned Operational Initiatives</span>
+                    <span>Recommendations to Review</span>
                   </h3>
                   <Link
                     to="/recommendations"
@@ -332,7 +318,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                       </p>
                       <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800">
                         <span className="text-[10px] text-neutral-400 font-mono uppercase">
-                          Impact: {rec.impact_level || 'High'}
+                          Impact: {rec.impact_level || 'Not estimated'}
                         </span>
                         {rec.status !== 'completed' && (
                           <Button
@@ -349,7 +335,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                   ))}
                   {recommendations.length === 0 && (
                     <Card className="p-6 text-center text-xs text-neutral-500">
-                      No operational initiatives assigned. Operations nominal.
+                      No recommendations are saved for the current dataset.
                     </Card>
                   )}
                 </div>
@@ -360,7 +346,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100 flex items-center space-x-2">
                     <Bell className="w-4 h-4 text-amber-500" />
-                    <span>Active Telemetry Alerts ({unreadAlerts.length})</span>
+                    <span>Recorded Alerts ({unreadAlerts.length})</span>
                   </h3>
                   {unreadAlerts.length > 0 && (
                     <Button
@@ -397,7 +383,7 @@ export const EmployeeDashboardPage: React.FC = () => {
                   ))}
                   {alerts.length === 0 && (
                     <Card className="p-6 text-center text-xs text-neutral-500">
-                      No active anomaly alerts. All measured numbers on baseline.
+                      No anomaly alerts are available. This does not establish that the dataset is free of issues.
                     </Card>
                   )}
                 </div>

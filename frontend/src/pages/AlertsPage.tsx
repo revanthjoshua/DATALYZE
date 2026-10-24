@@ -64,20 +64,6 @@ export const AlertsPage: React.FC = () => {
     }
   };
 
-  const handleTriggerTestAnomaly = async () => {
-    setTestLoading(true);
-    try {
-      const testDet = await detectionApi.triggerTestAnomaly();
-      setDetections((prev) => [testDet, ...(Array.isArray(prev) ? prev : [])]);
-      setStatusFilter('ALL');
-      toast.success('Simulated critical outlier anomaly generated with root causes!', 'Test Anomaly Triggered');
-    } catch (err) {
-      toast.error('Failed to generate test anomaly.', 'Error');
-    } finally {
-      setTestLoading(false);
-    }
-  };
-
   const handleSeverityFilter = (sev: string) => {
     setSeverityFilter(sev);
     localStorage.setItem('datalyze_alerts_sev', sev);
@@ -146,19 +132,11 @@ export const AlertsPage: React.FC = () => {
       <PageHeader
         stage={dynamicEyebrow}
         stageIcon={<Activity className="w-4 h-4 text-red-500" />}
-        title="Anomaly Alerts"
-        description="Unusual drops, spikes, and statistical outlier changes detected across your business numbers."
+        title="Monitoring & Anomaly Alerts"
+        description="Statistical z-score outlier events and unexpected metric divergences detected across your active dataset."
         actions={
           <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-            <Button
-              variant="outline"
-              size="sm"
-              isLoading={testLoading}
-              onClick={handleTriggerTestAnomaly}
-              leftIcon={<Zap className="w-3.5 h-3.5 text-amber-500" />}
-            >
-              Test Alert (Demo)
-            </Button>
+
             <Button
               variant="secondary"
               size="sm"

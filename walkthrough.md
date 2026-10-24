@@ -1,3 +1,5 @@
+> **Historical design notes — superseded by the analyst workspace rebuild.** This document describes an earlier product revision. Its pipeline, AI/causal claims, inventory features, accessibility assertions and test counts are not current capability or verification claims. Use the [current workspace guide](docs/ANALYST_WORKSPACE.md) and [release verification record](docs/RELEASE_VERIFICATION.md).
+
 # DATALYZE Enterprise Product & Design System Refinement
 
 ## Executive Summary

@@ -11,7 +11,7 @@ class RootCauseResultOut(BaseModel):
     dimension_value: str
     contribution_percentage: float
     explanation_text: str
-    confidence_score: float
+    confidence_score: Optional[float] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

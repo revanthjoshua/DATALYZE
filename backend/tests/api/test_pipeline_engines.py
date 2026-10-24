@@ -66,7 +66,7 @@ def test_detection_prediction_recommendation_and_noah_pipeline(client):
         "goal": "Autonomous multi-step investigation"
     })
     assert agentic_res.status_code == 403
-    assert "reserved for Phase 5 enterprise rollout" in agentic_res.json()["detail"]
+    assert "Autonomous execution is unavailable" in agentic_res.json()["detail"]
 
     # 9. Verify 401 for unauthenticated protected API calls
     unauth_res = client.get("/api/v1/kpis")

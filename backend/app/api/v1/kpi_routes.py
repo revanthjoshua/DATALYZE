@@ -29,11 +29,12 @@ def list_kpis(
 
 @router.get("/summary", response_model=List[KPISummaryCard])
 def get_dashboard_summary(
+    days: Optional[int] = Query(None, ge=1, le=36500),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db)
 ):
     service = KPIService(db, tenant_id=tenant_id)
-    return service.get_dashboard_kpi_summaries()
+    return service.get_dashboard_kpi_summaries(days=days)
 
 
 @router.post("", response_model=KPIDefinitionOut, status_code=status.HTTP_201_CREATED)
@@ -83,7 +84,7 @@ def get_kpi_values(
     kpi_id: int,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-    limit: int = 180,
+    limit: int = Query(180, ge=1, le=10000),
     tenant_id: int = Depends(get_current_tenant_id),
     db: Session = Depends(get_db)
 ):

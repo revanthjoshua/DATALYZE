@@ -10,7 +10,7 @@ from app.schemas.noah_schema import (
 from app.services.noah_service import NoahService
 from app.middleware.auth_middleware import get_current_tenant_id
 
-router = APIRouter(prefix="/noah", tags=["Noah Intelligence Companion & Agentic AI"])
+router = APIRouter(prefix="/noah", tags=["Dataset Assistant"])
 
 
 @router.post("/query", response_model=NoahQueryResponse)
@@ -32,5 +32,5 @@ def run_agentic_reasoning(
     # Gated for MVP Phase: Agentic workflow execution requires Phase 5 guardrails & audit logging
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Agentic workflow execution is reserved for Phase 5 enterprise rollout with full guardrails."
+        detail="Autonomous execution is unavailable. Use the analyst workspace to run and review evidence."
     )

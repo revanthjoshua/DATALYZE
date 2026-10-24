@@ -12,6 +12,14 @@ from app.api.v1.noah_routes import router as noah_router
 from app.api.v1.inventory_routes import router as inventory_router
 
 api_router = APIRouter()
+from app.api.v1.dataset_library_routes import router as dataset_library_router
+from app.api.v1.stakeholder_routes import router as stakeholder_router
+api_router.include_router(dataset_library_router)
+api_router.include_router(stakeholder_router)
+from app.api.v1.source_routes import router as source_router
+api_router.include_router(source_router)
+from app.api.v1.analysis_routes import router as analysis_router
+api_router.include_router(analysis_router)
 
 api_router.include_router(auth_router)
 api_router.include_router(company_router)
@@ -24,3 +32,6 @@ api_router.include_router(prediction_router)
 api_router.include_router(recommendation_router)
 api_router.include_router(noah_router)
 api_router.include_router(inventory_router)
+
+from app.api.v1 import internal_cron_routes
+api_router.include_router(internal_cron_routes.router)

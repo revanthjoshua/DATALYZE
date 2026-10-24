@@ -1,0 +1,80 @@
+# DORMANT historical alternative: the user rejected paid Render hosting.
+# The approved budget is INR 0; use the existing Vercel/Neon Free projects.
+# Do not create this Blueprint: its service definitions provision paid resources.
+# See docs/DEPLOYMENT.md and docs/DEPLOYMENT_APPROVAL.md (19 October 2026).
+services:
+  - type: web
+    name: datalyze-api
+    runtime: python
+    rootDir: backend
+    region: singapore
+    plan: 1c-2g
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health/ready
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.14"
+      - key: ENVIRONMENT
+        value: production
+      - key: STORAGE_BACKEND
+        value: db
+      - key: DATABASE_URL
+        fromDatabase:
+          name: datalyze-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: DATALYZE_MONITOR_INTERVAL_SECONDS
+        value: "60"
+      - key: DATALYZE_SOURCES_JSON
+        sync: false
+      - key: DATALYZE_NOTIFICATIONS_JSON
+        sync: false
+  - type: web
+    name: datalyze-web
+    runtime: static
+    rootDir: frontend
+    autoDeployTrigger: "off"
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: NODE_VERSION
+        value: "24.16.0"
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+databases:
+  - name: datalyze-db
+    databaseName: datalyze
+    user: datalyze
+    region: singapore
+    plan: 0.5c-1g
+    postgresMajorVersion: "18"
+    diskSizeGB: 5
+    ipAllowList: []

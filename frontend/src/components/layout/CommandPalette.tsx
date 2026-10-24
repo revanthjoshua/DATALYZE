@@ -34,7 +34,7 @@ interface CommandItem {
   id: string;
   title: string;
   subtitle?: string;
-  category: 'Navigation' | 'Quick Actions' | 'System';
+  category: 'Analyst Journey' | 'Administration' | 'Quick Actions' | 'System';
   icon: React.ReactNode;
   shortcut?: string;
   onSelect: () => void | Promise<void>;
@@ -53,24 +53,25 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const commandItems: CommandItem[] = [
-    // Navigation
+    { id:'nav-analysis', title:'Analyst Workspace', subtitle:'Business briefs, preparation, evidence and team decisions', category:'Analyst Journey', icon:<Lightbulb className="w-4 h-4"/>, onSelect:()=>{navigate('/analysis');onClose();} },
+    // 1. Analyst Journey (Ordered Sequence)
     {
-      id: 'nav-dashboard',
-      title: 'Executive Cockpit',
-      subtitle: 'Overview of business metrics & triage',
-      category: 'Navigation',
-      icon: <LayoutDashboard className="w-4 h-4 text-[#6B4226] dark:text-[#8C5E3C]" />,
+      id: 'nav-data',
+      title: 'Data & Preparation',
+      subtitle: 'Upload CSV, Excel, JSON & prepare dataset tables',
+      category: 'Analyst Journey',
+      icon: <Database className="w-4 h-4 text-cyan-500" />,
       shortcut: 'G D',
       onSelect: () => {
-        navigate('/');
+        navigate('/data');
         onClose();
       },
     },
     {
       id: 'nav-kpis',
-      title: 'KPIs & Custom Formulas',
-      subtitle: 'Track metrics, baselines & formulas',
-      category: 'Navigation',
+      title: 'KPIs & Exploration',
+      subtitle: 'Metrics, baseline formulas & dimension tracking',
+      category: 'Analyst Journey',
       icon: <TrendingUp className="w-4 h-4 text-emerald-500" />,
       shortcut: 'G K',
       onSelect: () => {
@@ -79,24 +80,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     },
     {
-      id: 'nav-alerts',
-      title: 'Anomaly & Variance Alerts',
-      subtitle: 'Review active z-score divergences',
-      category: 'Navigation',
-      icon: <Bell className="w-4 h-4 text-amber-500" />,
-      shortcut: 'G A',
+      id: 'nav-dashboard',
+      title: 'Operational Dashboard',
+      subtitle: 'Consolidated overview, metric status & triage',
+      category: 'Analyst Journey',
+      icon: <LayoutDashboard className="w-4 h-4 text-[#6B4226] dark:text-[#8C5E3C]" />,
+      shortcut: 'G H',
       onSelect: () => {
-        navigate('/alerts');
+        navigate('/');
         onClose();
       },
     },
     {
       id: 'nav-predictions',
-      title: '7-Day Statistical Forecasts',
-      subtitle: 'Bounded projections with confidence bands',
-      category: 'Navigation',
+      title: 'Forecasts & Projections',
+      subtitle: '7-day bounded statistical projections',
+      category: 'Analyst Journey',
       icon: <LineChart className="w-4 h-4 text-blue-500" />,
-      shortcut: 'G P',
+      shortcut: 'G F',
       onSelect: () => {
         navigate('/predictions');
         onClose();
@@ -104,57 +105,47 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     },
     {
       id: 'nav-recommendations',
-      title: 'Actionable Prescriptions',
-      subtitle: 'AI-generated operational directives',
-      category: 'Navigation',
+      title: 'Findings & Actions',
+      subtitle: 'Operational prescriptions & variance mitigation',
+      category: 'Analyst Journey',
       icon: <Lightbulb className="w-4 h-4 text-purple-500" />,
-      shortcut: 'G R',
+      shortcut: 'G A',
       onSelect: () => {
         navigate('/recommendations');
         onClose();
       },
     },
     {
-      id: 'nav-inventory',
-      title: 'Smart Inventory & Rebalancing',
-      subtitle: 'Stockout risk triage & reorder points',
-      category: 'Navigation',
-      icon: <Boxes className="w-4 h-4 text-orange-500" />,
-      shortcut: 'G I',
-      onSelect: () => {
-        navigate('/inventory');
-        onClose();
-      },
-    },
-    {
-      id: 'nav-data',
-      title: 'Data Ingestion Pipeline',
-      subtitle: 'Upload CSV, Excel, or query active tables',
-      category: 'Navigation',
-      icon: <Database className="w-4 h-4 text-cyan-500" />,
-      shortcut: 'G U',
-      onSelect: () => {
-        navigate('/data');
-        onClose();
-      },
-    },
-    {
       id: 'nav-reports',
-      title: 'Executive Decision Briefs',
-      subtitle: 'Print PDF briefs & download CSV summaries',
-      category: 'Navigation',
+      title: 'Reports & Decision Briefs',
+      subtitle: 'Executive decision briefs & CSV summaries',
+      category: 'Analyst Journey',
       icon: <FileSpreadsheet className="w-4 h-4 text-emerald-600" />,
-      shortcut: 'G B',
+      shortcut: 'G R',
       onSelect: () => {
         navigate('/reports');
         onClose();
       },
     },
     {
+      id: 'nav-alerts',
+      title: 'Monitoring & Anomaly Alerts',
+      subtitle: 'Statistical anomaly & variance alerts',
+      category: 'Analyst Journey',
+      icon: <Bell className="w-4 h-4 text-amber-500" />,
+      shortcut: 'G M',
+      onSelect: () => {
+        navigate('/alerts');
+        onClose();
+      },
+    },
+
+    // 2. Administration
+    {
       id: 'nav-settings',
       title: 'Company Settings & Team',
-      subtitle: 'Configure company profile, currency, industry & invite members',
-      category: 'Navigation',
+      subtitle: 'Workspace profile, industry & team access',
+      category: 'Administration',
       icon: <Settings className="w-4 h-4 text-neutral-500" />,
       shortcut: 'G S',
       onSelect: () => {
@@ -164,21 +155,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     },
     {
       id: 'nav-account',
-      title: 'Personal Account & Theme',
-      subtitle: 'Manage personal profile, password, appearance & permissions',
-      category: 'Navigation',
+      title: 'Personal Account & Security',
+      subtitle: 'User profile, credentials & appearance',
+      category: 'Administration',
       icon: <User className="w-4 h-4 text-[#6B4226] dark:text-[#D5B79F]" />,
-      shortcut: 'G A',
+      shortcut: 'G P',
       onSelect: () => {
         navigate('/account');
         onClose();
       },
     },
 
-    // Quick Actions
+    // 3. Quick Actions
     {
       id: 'action-ask-noah',
-      title: 'Ask Noah AI Intelligence',
+      title: 'Ask Noah Dataset Assistant',
       subtitle: 'Query business data with plain conversational language',
       category: 'Quick Actions',
       icon: <Bot className="w-4 h-4 text-[#6B4226] dark:text-[#8C5E3C]" />,
@@ -186,6 +177,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onSelect: () => {
         onClose();
         onOpenNoah();
+      },
+    },
+    {
+      id: 'action-upload-data',
+      title: 'Upload Tabular File (.csv / .xlsx)',
+      subtitle: 'Open data ingestion uploader',
+      category: 'Quick Actions',
+      icon: <UploadCloud className="w-4 h-4 text-cyan-500" />,
+      onSelect: () => {
+        navigate('/data');
+        onClose();
       },
     },
     {
@@ -207,17 +209,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     },
     {
-      id: 'action-upload-data',
-      title: 'Upload Tabular File (.csv / .xlsx)',
-      subtitle: 'Open data ingestion uploader',
-      category: 'Quick Actions',
-      icon: <UploadCloud className="w-4 h-4 text-cyan-500" />,
-      onSelect: () => {
-        navigate('/data');
-        onClose();
-      },
-    },
-    {
       id: 'action-export-report',
       title: 'Export Executive Decision Brief (Print/PDF)',
       subtitle: 'Generate print-formatted PDF summary report',
@@ -229,7 +220,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
     },
 
-    // System
+    // 4. System
     {
       id: 'system-toggle-theme',
       title: `Switch to ${isDark ? 'Light' : 'Dark'} Mode`,

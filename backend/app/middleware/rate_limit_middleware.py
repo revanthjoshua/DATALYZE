@@ -75,12 +75,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if os.getenv("DISABLE_RATE_LIMIT", "false").lower() == "true":
             return await call_next(request)
 
-        # Get client IP
-        client_ip = request.headers.get("x-forwarded-for")
-        if client_ip:
-            client_ip = client_ip.split(",")[0].strip()
-        else:
-            client_ip = request.client.host if request.client else "127.0.0.1"
+        # Trust the ASGI client address. A trusted-proxy configuration at the
+        # server may normalize it; arbitrary request headers must not bypass limits.
+        client_ip = request.client.host if request.client else "unknown-client"
 
         path = request.url.path
 

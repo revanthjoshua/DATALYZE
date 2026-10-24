@@ -1,8 +1,8 @@
 import json
 import logging
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 logger = logging.getLogger("datalyze.security")
 
@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Datalyze"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = Field(default="development", validation_alias="ENVIRONMENT")
+    VERCEL: bool = False
+    DATALYZE_SCHEDULER_MODE: Literal["manual", "vercel_daily"] = "manual"
+    CRON_SECRET: Optional[str] = Field(default=None, repr=False)
     
     # Secret Key loaded securely from environment variable
     SECRET_KEY: str = Field(
@@ -42,12 +45,27 @@ class Settings(BaseSettings):
 
     # Storage Settings
     STORAGE_BACKEND: str = Field(default="auto", validation_alias="STORAGE_BACKEND")  # auto, local, db, s3
-    MAX_UPLOAD_SIZE_BYTES: int = Field(default=50 * 1024 * 1024, validation_alias="MAX_UPLOAD_SIZE_BYTES")  # 50MB
+    MAX_UPLOAD_SIZE_BYTES: int = Field(default=50 * 1024 * 1024, gt=0, validation_alias="MAX_UPLOAD_SIZE_BYTES")
+    MAX_REQUEST_SIZE_BYTES: Optional[int] = Field(default=None, gt=0)
+    MAX_RESPONSE_SIZE_BYTES: Optional[int] = Field(default=None, gt=0)
     S3_BUCKET_NAME: Optional[str] = Field(default=None, validation_alias="S3_BUCKET_NAME")
     S3_ENDPOINT_URL: Optional[str] = Field(default=None, validation_alias="S3_ENDPOINT_URL")
     AWS_ACCESS_KEY_ID: Optional[str] = Field(default=None, validation_alias="AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY: Optional[str] = Field(default=None, validation_alias="AWS_SECRET_ACCESS_KEY")
     AWS_REGION: str = Field(default="auto", validation_alias="AWS_REGION")
+
+    @model_validator(mode="after")
+    def apply_host_limits(self):
+        if self.VERCEL:
+            # Leave room below the platform's 4.5 MB envelope for multipart headers.
+            self.MAX_UPLOAD_SIZE_BYTES = min(self.MAX_UPLOAD_SIZE_BYTES, 4_000_000)
+            self.MAX_REQUEST_SIZE_BYTES = min(self.MAX_REQUEST_SIZE_BYTES or 4_250_000, 4_250_000)
+            self.MAX_RESPONSE_SIZE_BYTES = min(self.MAX_RESPONSE_SIZE_BYTES or 4_000_000, 4_000_000)
+            if self.STORAGE_BACKEND == "local":
+                raise ValueError("Vercel requires durable dataset storage; use STORAGE_BACKEND=db.")
+            if self.STORAGE_BACKEND == "auto":
+                self.STORAGE_BACKEND = "db"
+        return self
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -64,28 +82,16 @@ class Settings(BaseSettings):
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        origins = []
+        # Defaults belong to the field declaration. An explicit allowlist,
+        # including an empty list, must never gain additional trusted sites.
         if isinstance(v, str):
-            v_str = v.strip()
-            if v_str.startswith("[") and v_str.endswith("]"):
-                try:
-                    origins = json.loads(v_str)
-                except Exception:
-                    origins = [item.strip() for item in v_str.strip("[]").split(",") if item.strip()]
-            else:
-                origins = [item.strip() for item in v_str.split(",") if item.strip()]
-        elif isinstance(v, list):
-            origins = [str(item).strip() for item in v if str(item).strip()]
-        
-        default_origins = [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "https://datalyze-y9n8.vercel.app",
-        ]
-        for def_url in default_origins:
-            if def_url not in origins:
-                origins.append(def_url)
-        return origins
+            value = v.strip()
+            origins = json.loads(value) if value.startswith("[") else value.split(",")
+        else:
+            origins = v
+        if not isinstance(origins, list) or any(not isinstance(item, str) for item in origins):
+            raise ValueError("CORS_ORIGINS must be a list of origin strings.")
+        return list(dict.fromkeys(item.strip().rstrip("/") for item in origins if item.strip()))
 
     @field_validator("SECRET_KEY")
     @classmethod

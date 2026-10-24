@@ -436,7 +436,7 @@ def test_agentic_noah_gated_and_conversational_noah_active(client):
         "goal": "Autonomous execution"
     })
     assert ag_res.status_code == 403
-    assert "reserved for Phase 5" in ag_res.json()["detail"]
+    assert "Autonomous execution is unavailable" in ag_res.json()["detail"]
 
 
 def test_rate_limiting_triggers_429_on_excessive_attempts():

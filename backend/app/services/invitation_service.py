@@ -9,8 +9,7 @@ from app.schemas.invitation_schema import AcceptInviteRequest
 from app.repositories.invitation_repository import InvitationRepository
 from app.repositories.user_repository import UserRepository
 import logging
-from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundException, DataValidationException, TenantIsolationException
+from app.core.exceptions import ResourceNotFoundException, DataValidationException, TenantIsolationException, DatalyzeException
 from app.core.security import hash_password
 from app.core.logging import log_audit_event
 from app.services.email_service import email_service
@@ -36,10 +35,12 @@ class InvitationService:
         Creates a pending invitation or refreshes an existing pending invite,
         then dispatches a branded invitation email via Resend.
         """
+        if self.tenant_id is None or (inviter_user and inviter_user.company_id != self.tenant_id):
+            raise TenantIsolationException()
         clean_email = email.lower().strip()
         clean_role = role.lower().strip()
-        if clean_role not in ["employee", "analyst", "admin"]:
-            clean_role = "employee"
+        if clean_role not in ["employee", "analyst", "admin", "manager", "viewer"]:
+            raise DataValidationException("Choose Employee, Analyst, Admin, Manager, or Viewer.")
 
         # 1. Verify user does not already exist
         existing_user = self.db.query(User).filter(User.email == clean_email).first()
@@ -51,7 +52,9 @@ class InvitationService:
 
         # 2. Get company details
         company = self.db.query(Company).filter(Company.id == self.tenant_id).first()
-        company_name = company.name if company else "Datalyze Workspace"
+        if company is None:
+            raise ResourceNotFoundException("Workspace")
+        company_name = company.name
         inviter_name = inviter_user.full_name if inviter_user else "Workspace Admin"
 
         # 3. Check for existing pending invitation
@@ -65,8 +68,6 @@ class InvitationService:
             existing_inv.role = clean_role
             if full_name:
                 existing_inv.full_name = full_name.strip()
-            self.db.commit()
-            self.db.refresh(existing_inv)
             invitation = existing_inv
         else:
             invitation = Invitation(
@@ -79,34 +80,10 @@ class InvitationService:
                 status="pending"
             )
             self.db.add(invitation)
-            self.db.commit()
-            self.db.refresh(invitation)
 
-        # 4. Dispatch Email via Resend
-        try:
-            delivery = email_service.send_invitation_email(
-                to_email=clean_email,
-                recipient_name=invitation.full_name or clean_email.split("@")[0].capitalize(),
-                company_name=company_name,
-                inviter_name=inviter_name,
-                role=clean_role,
-                token=token
-            )
-            if not delivery.get("success"):
-                if settings.ENVIRONMENT == "production":
-                    raise DataValidationException(
-                        "The invitation email could not be delivered. Check the Resend sender domain and production configuration, then try again."
-                    )
-                else:
-                    logger.warning(f"Resend delivery simulated for development/test: {delivery.get('error')}")
-        except Exception as exc:
-            if settings.ENVIRONMENT == "production":
-                # If email fails in production, rollback creation to avoid ghost invitations
-                self.db.delete(invitation)
-                self.db.commit()
-                raise exc
-            else:
-                logger.warning(f"Resend sandbox limitation in development/test: {exc}. Invitation token preserved for testing.")
+        # Persist only after the provider accepts the message. Rollback also
+        # preserves a prior working token when renewing an existing invitation.
+        self._deliver_and_commit(invitation, company_name, inviter_name)
 
         log_audit_event(
             event="team_invitation_created",
@@ -121,6 +98,29 @@ class InvitationService:
         )
 
         return invitation
+
+    def _deliver_and_commit(self, invitation: Invitation, company_name: str, inviter_name: str) -> None:
+        try:
+            self.db.flush()
+            delivery = email_service.send_invitation_email(
+                to_email=invitation.email,
+                recipient_name=invitation.full_name or invitation.email.split("@")[0].capitalize(),
+                company_name=company_name,
+                inviter_name=inviter_name,
+                role=invitation.role,
+                token=invitation.token,
+            )
+            if not isinstance(delivery, dict) or not delivery.get("success"):
+                raise RuntimeError("Email provider did not accept the invitation")
+            self.db.commit()
+            self.db.refresh(invitation)
+        except Exception as exc:
+            self.db.rollback()
+            logger.warning("Invitation delivery or persistence failed (%s)", type(exc).__name__)
+            raise DatalyzeException(
+                status_code=502,
+                detail="The invitation could not be sent. Check the email service configuration and try again. Any previous invitation remains valid."
+            ) from exc
 
     def verify_invitation_token(self, token: str) -> Dict[str, Any]:
         """
@@ -260,6 +260,8 @@ class InvitationService:
         """
         Resends an invitation with a fresh token and 7-day expiration extension.
         """
+        if admin_user.company_id != self.tenant_id:
+            raise TenantIsolationException()
         inv = self.inv_repo.get_by_id(invitation_id)
         if not inv or inv.company_id != self.tenant_id:
             raise ResourceNotFoundException("Invitation")
@@ -271,32 +273,10 @@ class InvitationService:
         company_name = company.name if company else "Datalyze Workspace"
         inviter_name = admin_user.full_name or "Workspace Admin"
 
-        # Generate new token and refresh expiry
-        previous_token = inv.token
-        previous_expires_at = inv.expires_at
-        previous_status = inv.status
         inv.token = secrets.token_urlsafe(32)
         inv.expires_at = datetime.now(timezone.utc) + timedelta(days=7)
         inv.status = "pending"
-        self.db.commit()
-        self.db.refresh(inv)
-
-        delivery = email_service.send_invitation_email(
-            to_email=inv.email,
-            recipient_name=inv.full_name or inv.email.split("@")[0].capitalize(),
-            company_name=company_name,
-            inviter_name=inviter_name,
-            role=inv.role,
-            token=inv.token
-        )
-        if not delivery.get("success"):
-            inv.token = previous_token
-            inv.expires_at = previous_expires_at
-            inv.status = previous_status
-            self.db.commit()
-            raise DataValidationException(
-                "The invitation email could not be delivered. Check the Resend sender domain and production configuration, then try again."
-            )
+        self._deliver_and_commit(inv, company_name, inviter_name)
 
         log_audit_event(
             event="team_invitation_resent",
@@ -311,6 +291,8 @@ class InvitationService:
         """
         Revokes an invitation, immediately invalidating the token.
         """
+        if admin_user.company_id != self.tenant_id:
+            raise TenantIsolationException()
         inv = self.inv_repo.get_by_id(invitation_id)
         if not inv or inv.company_id != self.tenant_id:
             raise ResourceNotFoundException("Invitation")

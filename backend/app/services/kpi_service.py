@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.repositories.kpi_repository import KPIRepository
 from app.schemas.kpi_schema import (
@@ -35,7 +35,7 @@ class KPIService:
         if existing:
             raise DatalyzeException(status_code=400, detail=f"KPI with key '{kpi_in.key}' already exists for this company.")
 
-        return self.kpi_repo.create_kpi(
+        return self.kpi_repo.create(dict(
             key=kpi_in.key,
             name=kpi_in.name,
             description=kpi_in.description,
@@ -45,14 +45,17 @@ class KPIService:
             calculation_cadence=kpi_in.calculation_cadence,
             is_custom=True,
             is_active=True
-        )
+        ))
 
-    def get_dashboard_kpi_summaries(self) -> List[KPISummaryCard]:
+    def get_dashboard_kpi_summaries(self, days: Optional[int] = None) -> List[KPISummaryCard]:
         active_kpis = self.kpi_repo.get_active_kpis()
         summaries: List[KPISummaryCard] = []
 
         for kpi in active_kpis:
-            history = self.kpi_repo.get_kpi_values(kpi.id, limit=200)
+            latest = self.kpi_repo.get_latest_kpi_value(kpi.id)
+            dated = latest is not None and (latest.dimension_data or {}).get('_observed_date', '_row_index' not in (latest.dimension_data or {}))
+            start = latest.timestamp.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days-1) if days and dated else None
+            history = self.kpi_repo.get_kpi_values(kpi.id, start_date=start, limit=10000)
             if not history:
                 continue
             
@@ -63,7 +66,7 @@ class KPIService:
             trend_direction: str = "neutral"
             status: str = "healthy"
 
-            if len(raw_vals) >= 2:
+            if len(raw_vals) >= 2 and dated:
                 prev_val = round(float(raw_vals[-2]), 2)
                 last_val = round(float(raw_vals[-1]), 2)
                 current_val = last_val
@@ -73,8 +76,6 @@ class KPIService:
                         trend_direction = "up"
                     elif pct_change < -0.1:
                         trend_direction = "down"
-            elif len(raw_vals) == 1:
-                prev_val = current_val
 
             # Determine status relative to KPI direction
             if pct_change is not None:
@@ -139,8 +140,11 @@ class KPIService:
 
     def update_kpi(self, kpi_id: int, kpi_update: KPIDefinitionUpdate) -> KPIDefinition:
         kpi = self.get_kpi_by_id(kpi_id)
-        return self.kpi_repo.update_kpi(kpi, kpi_update)
+        return self.kpi_repo.update(kpi, kpi_update.model_dump(exclude_unset=True))
+
+    def toggle_kpi_status(self, kpi_id: int, is_active: bool) -> KPIDefinition:
+        return self.kpi_repo.update(self.get_kpi_by_id(kpi_id), {'is_active': is_active})
 
     def delete_kpi(self, kpi_id: int) -> bool:
         kpi = self.get_kpi_by_id(kpi_id)
-        return self.kpi_repo.delete_kpi(kpi)
+        return self.kpi_repo.delete(kpi.id)

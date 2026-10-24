@@ -6,6 +6,12 @@ from sqlalchemy.orm import Session
 from app.models.report import Report
 from app.repositories.report_repository import ReportRepository
 from app.repositories.kpi_repository import KPIRepository
+from app.core.exceptions import ResourceNotFoundException
+
+
+def csv_text(value):
+    text=str(value or '')
+    return "'"+text if text.lstrip().startswith(('=', '+', '-', '@')) or text.startswith(('\t','\r')) else text
 
 
 class ReportingService:
@@ -28,30 +34,21 @@ class ReportingService:
             latest = self.kpi_repo.get_latest_kpi_value(kpi.id)
             val_str = f"{latest.value:.2f}" if latest else "N/A"
             date_str = latest.timestamp.strftime("%Y-%m-%d") if latest else "N/A"
-            writer.writerow([kpi.key, kpi.name, kpi.category, kpi.unit, kpi.direction, val_str, date_str])
-
-        # Record Report in DB
-        report_record = Report(
-            company_id=self.tenant_id,
-            user_id=user_id,
-            title="KPI Summary Export",
-            report_type="kpi_summary",
-            status="generated"
-        )
-        self.db.add(report_record)
-        self.db.commit()
+            writer.writerow([csv_text(kpi.key), csv_text(kpi.name), csv_text(kpi.category), csv_text(kpi.unit), csv_text(kpi.direction), val_str, date_str])
 
         return output.getvalue()
 
     def generate_kpi_trend_csv(self, kpi_id: int, user_id: Optional[int] = None) -> str:
         kpi = self.kpi_repo.get_by_id(kpi_id)
+        if not kpi:
+            raise ResourceNotFoundException('KPI not found')
         history = self.kpi_repo.get_kpi_values(kpi_id, limit=365)
         
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Date", f"{kpi.name} ({kpi.unit})", "Source File"])
+        writer.writerow(["Date", csv_text(f"{kpi.name} ({kpi.unit})"), "Source File"])
         
         for h in history:
-            writer.writerow([h.timestamp.strftime("%Y-%m-%d"), f"{h.value:.2f}", h.source_file or "Direct Ingestion"])
+            writer.writerow([h.timestamp.strftime("%Y-%m-%d"), f"{h.value:.2f}", csv_text(h.source_file or "Direct Ingestion")])
 
         return output.getvalue()
