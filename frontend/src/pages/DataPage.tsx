@@ -46,6 +46,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { PageHeader } from '../components/ui/PageHeader';
 import { StateView, EmptyState } from '../components/ui/StateView';
 import { Modal } from '../components/ui/Modal';
+import { normalizeGroupQueryResults } from '../utils/groupQueryResults.mjs';
 
 import { FormField, Input, Select, Textarea } from '../components/ui/FormField';
 
@@ -81,6 +82,15 @@ export const DataPage: React.FC = () => {
   const [selectedAggFunc, setSelectedAggFunc] = useState<string>('sum');
   const [queryRunning, setQueryRunning] = useState<boolean>(false);
   const [queryResults, setQueryResults] = useState<any>(null);
+  const queryGroupBy = queryResults?.group_by || selectedGroupBy;
+  const queryAggCol = queryResults?.agg_col || selectedAggCol;
+  const queryAggFunc = queryResults?.agg_func || selectedAggFunc;
+  const queryRows = normalizeGroupQueryResults(
+    queryResults,
+    queryGroupBy,
+    queryAggCol,
+    queryAggFunc,
+  );
 
   // Dataset Live Spreadsheet Editor Modal State
   const [isEditorOpen, setIsEditorOpen] = useState<boolean>(false);
@@ -904,23 +914,29 @@ export const DataPage: React.FC = () => {
                   <table className="w-full text-xs font-mono">
                     <thead>
                       <tr className="border-b border-neutral-200 dark:border-neutral-700 text-neutral-500">
-                        <th className="py-1 px-2 text-left">{selectedGroupBy}</th>
+                        <th className="py-1 px-2 text-left">{queryGroupBy}</th>
                         <th className="py-1 px-2 text-right">
-                          {selectedAggFunc.toUpperCase()}({selectedAggCol})
+                          {queryAggFunc.toUpperCase()}({queryAggCol})
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-200/60 dark:divide-neutral-800">
-                      {Object.entries(queryResults).map(([k, v]: [string, any]) => (
-                        <tr key={k}>
+                      {queryRows.length > 0 ? queryRows.map((row) => (
+                        <tr key={row.key}>
                           <td className="py-1 px-2 font-sans font-medium text-neutral-800 dark:text-neutral-200">
-                            {k}
+                            {row.label}
                           </td>
                           <td className="py-1 px-2 text-right font-bold text-[#6B4226] dark:text-[#8C5E3C]">
-                            {typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : String(v)}
+                            {typeof row.value === 'number' ? row.value.toLocaleString(undefined, { maximumFractionDigits: 2 }) : row.value}
                           </td>
                         </tr>
-                      ))}
+                      )) : (
+                        <tr>
+                          <td colSpan={2} className="py-2 px-2 text-center text-neutral-500">
+                            No grouped results were returned.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
