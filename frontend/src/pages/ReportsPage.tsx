@@ -248,7 +248,7 @@ export const ReportsPage: React.FC = () => {
                 <div className="h-7 w-7 rounded-lg bg-[#6B4226] text-white font-bold flex items-center justify-center text-xs">
                   D
                 </div>
-                <span className="font-bold text-sm tracking-tight">DATALYZE CONTINUOUS INTELLIGENCE</span>
+                <span className="font-bold text-sm tracking-tight">DATALYZE ANALYST WORKSPACE</span>
               </div>
               <h2 className="text-2xl font-extrabold text-neutral-900 dark:text-neutral-100 tracking-tight mt-2">
                 Executive Decision Briefing & Operations Review
@@ -263,7 +263,7 @@ export const ReportsPage: React.FC = () => {
               <p className="text-neutral-500">Date: {currentDateStr}</p>
               <p className="text-neutral-500">Author: {user?.full_name || 'System Admin'}</p>
               <Badge variant="healthy" size="xs">
-                CONFIDENTIAL • BOARD READY
+                WORKSPACE REPORT • VALIDATE BEFORE ACTION
               </Badge>
             </div>
           </div>
@@ -362,7 +362,7 @@ export const ReportsPage: React.FC = () => {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4 text-amber-500" />
               <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-neutral-900 dark:text-neutral-100">
-                2. Statistical Anomalies & Root Causes
+                2. Statistical Anomalies & Baseline Changes
               </h3>
             </div>
 
@@ -406,7 +406,7 @@ export const ReportsPage: React.FC = () => {
             <div className="flex items-center space-x-2">
               <Lightbulb className="w-4 h-4 text-[#6B4226] dark:text-[#8C5E3C]" />
               <h3 className="text-sm font-bold uppercase tracking-wider font-mono text-neutral-900 dark:text-neutral-100">
-                3. Prescribed Operational Directives
+                3. Suggested Investigation Actions
               </h3>
             </div>
 
