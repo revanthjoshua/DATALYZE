@@ -354,7 +354,7 @@ export const DashboardPage: React.FC = () => {
         onRetry={fetchAllDashboardData}
         loadingSkeleton="card-grid"
       >
-        {!hasData ? datasetInfo?.has_dataset ? (
+        {!hasData ? (datasetInfo?.has_dataset ? (
           <div className="bg-white dark:bg-[#15171C] border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 sm:p-10 text-center space-y-4 shadow-xs">
             <div className="mx-auto w-14 h-14 rounded-2xl bg-[#F4ECE4] dark:bg-[#271910] text-[#6B4226] dark:text-[#D5B79F] flex items-center justify-center">
               <Database className="w-7 h-7" />
