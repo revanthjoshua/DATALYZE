@@ -14,18 +14,24 @@ logger = logging.getLogger('datalyze.monitor')
 
 
 def scheduler_configuration():
-    """Configuration is not evidence that an external scheduler has run."""
+    """Report whether this deployment can actually run unattended checks."""
     daily = settings.DATALYZE_SCHEDULER_MODE == 'vercel_daily'
     interval = int(os.environ.get('DATALYZE_MONITOR_INTERVAL_SECONDS', '0'))
+    preview = os.environ.get('VERCEL_ENV', '').strip().lower() == 'preview'
     configured = bool(settings.CRON_SECRET and len(settings.CRON_SECRET) >= 32) if daily else bool(interval)
+    if preview:
+        configured = False
+        description = ('Unattended checks do not run on Vercel Preview deployments. Vercel Cron invokes Production; opening or refreshing Monitor checks the current data.'
+            if daily else 'Unattended checks are unavailable on Vercel Preview deployments. Opening or refreshing Monitor checks the current data.')
+    elif daily:
+        description = ('Daily checks are configured; the hosting service can run them at any time within the scheduled hour. Missed runs are not retried automatically. Backlogged work continues on later runs.'
+            if configured else 'Daily checks are unavailable until the administrator configures the scheduler secret.')
+    else:
+        description = (f'Background checks are configured every {interval} seconds.' if configured else
+            'Unattended checks are disabled. Opening or refreshing Monitor checks the current data.')
     return {'mode': 'vercel_daily' if daily else ('worker' if interval else 'manual'),
             'configured': configured, 'minimum_interval_seconds': 86400 if daily else 300,
-            'interval_seconds': 86400 if daily else interval,
-            'description': ('Daily checks are configured; the hosting service can run them at any time within the scheduled hour. Missed runs are not retried automatically. Backlogged work continues on later runs.'
-                if configured else 'Daily checks are unavailable until the administrator configures the scheduler secret.') if daily else
-                (f'Background checks are configured every {interval} seconds.' if interval else
-                 'Unattended checks are disabled. Opening or refreshing Monitor checks the current data.')}
-
+            'interval_seconds': 86400 if daily else interval, 'description': description}
 
 def _record_attempt(db, tenant, status):
     # Caller holds the Company lock, so concurrent invocations update one row.
