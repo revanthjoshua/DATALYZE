@@ -24,6 +24,7 @@ from app.services.dataset_store import TenantDatasetStore
 
 @pytest.fixture
 def cron_client(monkeypatch):
+    monkeypatch.delenv('VERCEL_ENV', raising=False)
     monkeypatch.setattr(settings, 'DATALYZE_SCHEDULER_MODE', 'vercel_daily')
     monkeypatch.setattr(settings, 'CRON_SECRET', 'only-a-test-cron-secret-with-32-or-more-characters')
     app = FastAPI()
@@ -70,6 +71,7 @@ def test_authorized_cron_waits_for_bounded_cycle_and_disables_caching(cron_clien
 
 @pytest.fixture
 def scheduled(monkeypatch):
+    monkeypatch.delenv('VERCEL_ENV', raising=False)
     monkeypatch.setattr(settings, 'DATALYZE_SCHEDULER_MODE', 'manual')
     monkeypatch.setattr(settings, 'CRON_SECRET', None)
     monkeypatch.setattr(TenantDatasetStore, '_store', {})
@@ -251,3 +253,33 @@ def test_internal_attempt_markers_are_not_public_analysis_evidence(scheduled):
         with pytest.raises(HTTPException) as error:
             analysis_routes.download(marker.id, user, db)
         assert error.value.status_code == 404
+
+
+def test_preview_does_not_advertise_or_allow_unattended_refresh(scheduled, monkeypatch):
+    current = source_data(scheduled, 1)
+    monkeypatch.setenv('VERCEL_ENV', 'preview')
+    monkeypatch.setattr(settings, 'DATALYZE_SCHEDULER_MODE', 'vercel_daily')
+    monkeypatch.setattr(settings, 'CRON_SECRET', 'configured-test-only-secret-at-least-32-characters')
+
+    status = monitor_runner.scheduler_configuration()
+    assert status['mode'] == 'vercel_daily'
+    assert status['configured'] is False
+    assert 'Preview' in status['description'] and 'Production' in status['description']
+
+    with scheduled() as db:
+        with pytest.raises(HTTPException) as error:
+            automation.configure_schedule(db, 1, 'sales', True, 86400, current)
+        assert error.value.status_code == 422
+        assert 'Preview' in str(error.value.detail)
+        assert db.query(SourceRefreshJob).count() == 0
+
+
+def test_preview_cron_never_starts_scheduled_work(cron_client, monkeypatch):
+    monkeypatch.setenv('VERCEL_ENV', 'preview')
+    monkeypatch.setattr(internal_cron_routes, 'run_cycle',
+        lambda **_: pytest.fail('Preview must never start scheduled work.'))
+    response = cron_client.get('/api/v1/internal/cron',
+        headers={'Authorization': 'Bearer ' + settings.CRON_SECRET})
+    assert response.status_code == 503
+    assert 'Preview' in response.json()['detail']
+    assert settings.CRON_SECRET not in response.text
