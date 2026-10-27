@@ -27,7 +27,10 @@ def get_current_user(
     if not payload or "sub" not in payload:
         raise AuthenticationException("Invalid or expired authentication token")
 
-    user_id = int(payload["sub"])
+    try:
+        user_id = int(payload["sub"])
+    except (ValueError, TypeError):
+        raise AuthenticationException("Invalid authentication token")
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise AuthenticationException("User account does not exist")
@@ -61,6 +64,6 @@ def require_analyst_user(
 ) -> User:
     """Enforces server-side RBAC for Analyst, Manager, or Admin users (excludes Viewer from writes)"""
     role = (current_user.role or "").lower()
-    if role in ["viewer"]:
-        raise PermissionDeniedException("Forbidden: Read-only Viewer role cannot perform modifying actions.")
+    if role not in ["company admin", "company_admin", "admin", "platform super admin", "super_admin", "analyst", "manager", "employee"]:
+        raise PermissionDeniedException("Forbidden: This role cannot perform modifying actions.")
     return current_user

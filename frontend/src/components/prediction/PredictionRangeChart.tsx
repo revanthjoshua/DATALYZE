@@ -100,7 +100,7 @@ const CustomPredictionTooltip: React.FC<{
         {isForecast && rangeLow !== null && rangeHigh !== null && rangeLow !== undefined && rangeHigh !== undefined && (
           <div className="pt-1.5 border-t border-neutral-100 dark:border-neutral-800/80 space-y-1">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-neutral-500">95% Expected Range:</span>
+              <span className="text-neutral-500">Empirical error range:</span>
               <span className="font-mono text-neutral-700 dark:text-neutral-300 font-semibold">
                 {formatKPIValue(rangeLow, unit, currency)} – {formatKPIValue(rangeHigh, unit, currency)}
               </span>
@@ -180,8 +180,8 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
       ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
       : p.forecast_date;
 
-    const low = p.range_low !== null && p.range_low !== undefined ? p.range_low : p.predicted_value * 0.9;
-    const high = p.range_high !== null && p.range_high !== undefined ? p.range_high : p.predicted_value * 1.1;
+    const low = p.range_low ?? null;
+    const high = p.range_high ?? null;
 
     chartData.push({
       dateStr: p.forecast_date.split('T')[0],
@@ -191,7 +191,7 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
       forecastValue: p.predicted_value,
       rangeLow: low,
       rangeHigh: high,
-      confidenceBand: [low, high],
+      confidenceBand: low !== null && high !== null ? [low, high] : null,
       isForecast: true,
       isBridge: false,
     });
@@ -211,21 +211,21 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
               <LineChart className="w-4 h-4" />
             </div>
             <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100 tracking-tight">
-              {kpiName} Statistical Forecast & Confidence Band
+              {kpiName} Forecast & Empirical Range
             </h3>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 font-normal">
-            Observed history followed by a {horizonDays}-day forward trajectory with mathematically computed 95% variance bands.
+            Observed history followed by {predictions.length} saved daily projections. Ranges reflect validation errors and are not calibrated coverage guarantees.
           </p>
         </div>
 
         <div className="flex items-center space-x-2 self-start sm:self-auto">
           <Badge
-            variant={confidence === 'high' ? 'healthy' : confidence === 'moderate' ? 'warning' : 'critical'}
+            variant="info"
             size="sm"
             dot
           >
-            Confidence: {confidence.toUpperCase()}
+            Empirical uncertainty
           </Badge>
         </div>
       </div>
@@ -245,7 +245,7 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
         <div className="flex items-center space-x-2">
           <span className="w-4 h-3 bg-blue-500/25 dark:bg-blue-400/30 border border-blue-400/50 rounded-xs inline-block" />
           <span className="text-neutral-700 dark:text-neutral-300 font-semibold">Shaded Area:</span>
-          <span className="text-neutral-500">95% Confidence Band</span>
+          <span className="text-neutral-500">Empirical Error Range</span>
         </div>
       </div>
 
@@ -297,7 +297,7 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
             <Area
               type="monotone"
               dataKey="confidenceBand"
-              name="95% Confidence Band"
+              name="Empirical Error Range"
               stroke={isDark ? '#60A5FA' : '#2563EB'}
               strokeWidth={1}
               strokeDasharray="3 3"
@@ -310,7 +310,7 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
             <Line
               type="monotone"
               dataKey="rangeHigh"
-              name="Upper 95% Bound"
+              name="Upper Empirical Bound"
               stroke={isDark ? '#93C5FD' : '#60A5FA'}
               strokeWidth={1.2}
               strokeDasharray="2 2"
@@ -324,7 +324,7 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
             <Line
               type="monotone"
               dataKey="rangeLow"
-              name="Lower 95% Bound"
+              name="Lower Empirical Bound"
               stroke={isDark ? '#93C5FD' : '#60A5FA'}
               strokeWidth={1.2}
               strokeDasharray="2 2"
@@ -363,10 +363,10 @@ export const PredictionRangeChart: React.FC<PredictionRangeChartProps> = ({
       <div className="p-3 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 flex flex-col sm:flex-row items-start sm:items-center justify-between font-mono gap-2">
         <span className="flex items-center space-x-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 inline shrink-0" />
-          <span>Statistical Model: OLS Linear Trend Regression + 7-Day Cyclic Seasonality</span>
+          <span>Model: {predictions[0]?.method.replace(/_/g, ' ') || 'No saved model'}</span>
         </span>
         <span className="text-[#6B4226] dark:text-[#D5B79F] font-semibold">
-          Prediction interval widens with future forecast distance
+          Future error can exceed the displayed range
         </span>
       </div>
     </div>

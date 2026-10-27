@@ -67,8 +67,8 @@ export const AppLayout: React.FC = () => {
       <button
         onClick={() => setIsNoahOpen(true)}
         className="fixed bottom-5 right-5 z-30 flex items-center space-x-2 px-4 py-2.5 rounded-full bg-[#6B4226] hover:bg-[#55331C] dark:bg-[#7A4B2C] dark:hover:bg-[#6B4226] text-white shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-150 cursor-pointer border border-white/20"
-        title="Open Noah AI Companion (⌘ / / Ctrl+/)"
-        aria-label="Open Noah AI Companion"
+        title="Open rule-based dataset assistant (⌘ / / Ctrl+/)"
+        aria-label="Open dataset assistant"
       >
         <div className="relative">
           <Bot className="w-4 h-4 text-white" />

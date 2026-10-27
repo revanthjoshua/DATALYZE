@@ -39,32 +39,41 @@ class DataTypeDetector:
     ]
 
     @staticmethod
-    def safe_float(val: Any, default: float = 0.0) -> float:
+    def safe_float(val: Any, default: Optional[float] = None) -> Optional[float]:
         try:
-            if val is None or pd.isna(val) or np.isnan(val) or np.isinf(val):
-                return default
-            return round(float(val), 2)
-        except Exception:
+            value = float(val)
+            return value if np.isfinite(value) else default
+        except (TypeError, ValueError, OverflowError):
             return default
 
     @classmethod
     def clean_numeric_value(cls, val: Any) -> Optional[float]:
-        if pd.isna(val) or val is None:
+        if val is None or pd.isna(val):
             return None
         if isinstance(val, (int, float, np.integer, np.floating)):
-            f = float(val)
-            return None if (np.isnan(f) or np.isinf(f)) else f
-        s = str(val).strip()
-        # Remove currency symbols and common noise
-        s = re.sub(r"(?i)\b(rs\.?|inr|usd|eur|gbp|cad|aud|chf|jpy|aed)\b", "", s)
-        s = re.sub(r"[$€£₹¥₩%,\s]", "", s)
-        # Handle negative parenthesis e.g. (120.50) -> -120.50
-        s = re.sub(r"^\((.+)\)$", r"-\1", s)
-        try:
-            f = float(s)
-            return None if (np.isnan(f) or np.isinf(f)) else f
-        except Exception:
-            return None
+            return cls.safe_float(val)
+        value = str(val).strip()
+        value = re.sub(r"(?i)\b(rs\.?|inr|usd|eur|gbp|cad|aud|chf|jpy|aed)\b", "", value)
+        value = re.sub(r"[$€£₹¥₩%\s]", "", value)
+        value = re.sub(r"^\((.+)\)$", r"-\1", value)
+        # Respect common decimal-comma exports instead of treating €1.250,50 as 1.25050.
+        if ',' in value and '.' in value:
+            if value.rfind(',') > value.rfind('.'):
+                if not re.fullmatch(r"[+-]?\d{1,3}(?:\.\d{3})*,\d+", value):
+                    return None
+                value = value.replace('.', '').replace(',', '.')
+            else:
+                if not re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})*\.\d+", value):
+                    return None
+                value = value.replace(',', '')
+        elif ',' in value:
+            if re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+", value):
+                value = value.replace(',', '')
+            elif re.fullmatch(r"[+-]?\d+,\d{1,2}", value):
+                value = value.replace(',', '.')
+            else:
+                return None
+        return cls.safe_float(value)
 
     @classmethod
     def detect_column_type(cls, col_name: str, series: pd.Series) -> Dict[str, Any]:
@@ -101,8 +110,19 @@ class DataTypeDetector:
                 "stats": {},
             }
 
+        # Identifiers must never become quantities or lose leading zeros.
+        str_vals = non_null_series.astype(str).str.strip().str.lower()
+        is_id_name = any(col_lower == kw or col_lower.endswith(f"_{kw}") for kw in cls.ID_KEYWORDS)
+        leading_zero_code = str_vals.str.fullmatch(r"0\d+").any()
+        if is_id_name or leading_zero_code:
+            return {
+                "name": clean_name, "data_type": "Identifier", "unit": "id", "raw_dtype": str(series.dtype),
+                "total_count": total_count, "non_null_count": non_null_count, "null_count": null_count,
+                "unique_count": unique_count, "sample_values": sample_values, "stats": {"cardinality": unique_count},
+            }
+
         # 1. Check for Boolean
-        bool_candidates = {"true", "false", "yes", "no", "1", "0", "t", "f", "y", "n"}
+        bool_candidates = {"true", "false", "yes", "no", "t", "f", "y", "n"}
         str_vals = non_null_series.astype(str).str.strip().str.lower()
         if unique_count <= 2 and set(str_vals.unique()).issubset(bool_candidates):
             return {
@@ -187,15 +207,15 @@ class DataTypeDetector:
 
         # 3. Numeric conversion (fast vectorized path)
         if pd.api.types.is_numeric_dtype(series):
-            numeric_cleaned = pd.to_numeric(non_null_series, errors="coerce").dropna()
+            numeric_cleaned = pd.to_numeric(non_null_series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
         else:
-            direct_num = pd.to_numeric(non_null_series, errors="coerce").dropna()
-            if len(direct_num) >= non_null_count * 0.7:
+            direct_num = pd.to_numeric(non_null_series, errors="coerce").replace([np.inf, -np.inf], np.nan).dropna()
+            if len(direct_num) == non_null_count:
                 numeric_cleaned = direct_num
             else:
                 numeric_cleaned = non_null_series.apply(cls.clean_numeric_value).dropna()
 
-        is_numeric = len(numeric_cleaned) >= non_null_count * 0.7 and len(numeric_cleaned) > 0
+        is_numeric = len(numeric_cleaned) == non_null_count and len(numeric_cleaned) > 0
 
         # Check for Percentage
         has_percent_symbol = any("%" in str(v) for v in sample_raw)
@@ -265,7 +285,7 @@ class DataTypeDetector:
         # 6. Check for Quantitative Numbers (Integer vs Decimal)
         if is_numeric:
             # Check if all values are exact integers (no fractional decimal component)
-            is_all_integers = bool(np.all(np.isclose(numeric_cleaned, np.round(numeric_cleaned))))
+            is_all_integers = bool(np.all(numeric_cleaned == np.trunc(numeric_cleaned)))
             data_type = "Integer" if is_all_integers else "Decimal"
             return {
                 "name": clean_name,
@@ -282,7 +302,7 @@ class DataTypeDetector:
                     "mean": cls.safe_float(numeric_cleaned.mean()),
                     "min": cls.safe_float(numeric_cleaned.min()),
                     "max": cls.safe_float(numeric_cleaned.max()),
-                    "std": cls.safe_float(numeric_cleaned.std()) if len(numeric_cleaned) > 1 else 0.0,
+                    "std": cls.safe_float(numeric_cleaned.std()) if len(numeric_cleaned) > 1 else None,
                 },
             }
 

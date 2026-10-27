@@ -22,5 +22,5 @@ class AlertRepository(BaseRepository[Alert]):
         unread = self.get_unread_alerts(limit=500)
         for alert in unread:
             alert.is_read = True
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         return len(unread)

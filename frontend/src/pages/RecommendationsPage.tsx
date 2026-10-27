@@ -84,8 +84,8 @@ export const RecommendationsPage: React.FC = () => {
       <PageHeader
         stage={dynamicEyebrow}
         stageIcon={<Lightbulb className="w-4 h-4 text-amber-500" />}
-        title="Recommended Actions"
-        description="Practical steps and initiatives recommended to improve your business performance."
+        title="Findings & Actions"
+        description="Prescriptive operational initiatives and variance mitigation steps synthesized from your business metrics."
         actions={
           <Button
             variant="primary"

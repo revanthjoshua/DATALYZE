@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { loginReturnPath } from '../utils/authRedirect';
 import {
   UserCheck,
   Lock,
@@ -21,6 +22,8 @@ export const EmployeeLoginPage: React.FC = () => {
   const { login } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = loginReturnPath(location.state?.returnTo, location.search);
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +37,7 @@ export const EmployeeLoginPage: React.FC = () => {
     if (!identifier.trim()) {
       errors.identifier = 'Employee Email or Username is required.';
     }
-    if (!password.trim()) {
+    if (!password) {
       errors.password = 'Password is required.';
     }
     setFieldErrors(errors);
@@ -51,11 +54,11 @@ export const EmployeeLoginPage: React.FC = () => {
     try {
       const user = await login({
         identifier: identifier.trim(),
-        password: password.trim(),
+        password,
         portal_type: 'employee',
       });
       toast.success(`Welcome, ${user.full_name}. Employee workspace active.`, 'Employee Authenticated');
-      navigate('/employee/dashboard');
+      navigate(returnTo, {replace: true});
     } catch (err: any) {
       const msg =
         err.response?.data?.detail ||
@@ -82,7 +85,7 @@ export const EmployeeLoginPage: React.FC = () => {
           Employee Sign In
         </h2>
         <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto font-normal">
-          Access operational telemetry, execute assigned action items, monitor anomaly alerts, and stock data
+          Explore data, review metrics and recommendations, and share findings with your team
         </p>
       </div>
 
@@ -120,6 +123,7 @@ export const EmployeeLoginPage: React.FC = () => {
                 rightIcon={
                   <button
                     type="button"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                     onClick={() => setShowPassword(!showPassword)}
                     className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
                   >
@@ -164,6 +168,7 @@ export const EmployeeLoginPage: React.FC = () => {
 
             <Link
               to="/login/admin"
+              state={{returnTo}}
               className="font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 flex items-center space-x-1 transition-colors"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-[#6B4226] dark:text-[#D5B79F]" />
@@ -172,6 +177,7 @@ export const EmployeeLoginPage: React.FC = () => {
 
             <Link
               to="/login"
+              state={{returnTo}}
               className="text-[11px] text-neutral-400 hover:underline pt-1"
             >
               ← Back to Portal Selection

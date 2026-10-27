@@ -24,83 +24,38 @@ class RootCauseService:
         kpi_name = kpi.name if kpi else "Key Metric"
         kpi_key = kpi.key if kpi else "metric"
 
-        contributions: List[Dict[str, Any]] = []
-
-        # 1. Primary Strategy: Analyze directly from the active in-memory DataFrame if available
-        df = TenantDatasetStore.get_dataset(self.tenant_id)
-        if df is None or df.empty:
-            try:
-                from app.api.v1.data_routes import _ensure_dataset_loaded
-                df = _ensure_dataset_loaded(self.tenant_id, self.db)
-            except Exception:
-                pass
-
-        if df is not None and not df.empty:
-            categorical_cols = list(df.select_dtypes(include=["object", "category", "string"]).columns)
-            # Match KPI key to numeric column
-            target_col = None
-            for c in df.columns:
-                if c.lower() == kpi_key.lower() or c.lower().replace(" ", "_") == kpi_key.lower():
-                    target_col = c
-                    break
-            if not target_col:
-                num_cols = list(df.select_dtypes(include=["number"]).columns)
-                target_col = num_cols[0] if num_cols else None
-
-            if target_col and categorical_cols:
-                contributions = ContributionAnalyzer.analyze_from_dataset(
-                    df=df,
-                    kpi_col=target_col,
-                    dimension_cols=categorical_cols,
-                    direction=detection.direction,
-                    overall_change=detection.magnitude,
-                    kpi_name=kpi_name
-                )
-
-        # 2. Secondary Strategy: Analyze from sequential KPIValue dimension_data points
-        if not contributions:
-            recent_values = self.kpi_repo.get_kpi_values(detection.kpi_id, limit=7)
-            if recent_values:
-                latest_point = recent_values[-1]
-                baseline_point = recent_values[-2] if len(recent_values) >= 2 else None
-
-                current_dims = latest_point.dimension_data or {}
-                baseline_dims = baseline_point.dimension_data if baseline_point else {}
-
-                contributions = ContributionAnalyzer.analyze_dimension_contributions(
-                    current_dim_data=current_dims,
-                    baseline_dim_data=baseline_dims,
-                    overall_change=detection.magnitude,
-                    direction=detection.direction,
-                    kpi_name=kpi_name
-                )
-
-        # 3. Tertiary Strategy: Grounded domain-based distinct proportional factors
-        if not contributions:
-            direction_verb = "drop" if detection.direction == "down" else "surge"
-            contributions = [
-                {
-                    "dimension_name": "primary_channel",
-                    "dimension_value": "Online / Direct Delivery",
-                    "contribution_percentage": 56.4,
-                    "explanation_text": f"Online / Direct Delivery experienced a notable {direction_verb}, driving 56.4% of the overall {kpi_name} change.",
-                    "confidence_score": 0.88,
-                },
-                {
-                    "dimension_name": "fulfillment_hub",
-                    "dimension_value": "Primary Region Central",
-                    "contribution_percentage": 28.2,
-                    "explanation_text": f"Regional volume at Primary Region Central accounted for 28.2% of the net {direction_verb}.",
-                    "confidence_score": 0.82,
-                },
-                {
-                    "dimension_name": "category_segment",
-                    "dimension_value": "High-Volume Core Items",
-                    "contribution_percentage": 15.4,
-                    "explanation_text": f"Demand shifts in High-Volume Core Items contributed 15.4% to the divergence.",
-                    "confidence_score": 0.79,
-                }
-            ]
+        # Contributions require observed dates and explicit comparison windows.
+        # Missing dimensional evidence must remain unknown, never a domain fallback.
+        import pandas as pd
+        from app.services.analyst_service import AnalystService
+        from app.api.v1.data_routes import _ensure_dataset_loaded
+        contributions = []
+        df = _ensure_dataset_loaded(self.tenant_id, self.db)
+        if df is not None and not df.empty and kpi_key in df:
+            date_col = '_parsed_date' if '_parsed_date' in df else next(
+                (c for c in df if c.lower() in ['date','timestamp','order_date','transaction_date']), None)
+            if date_col:
+                dates = pd.to_datetime(df[date_col], errors='coerce', utc=True)
+                split = pd.Timestamp(detection.detected_at)
+                split = split.tz_localize('UTC') if split.tzinfo is None else split.tz_convert('UTC')
+                split = split.floor('D')
+                window = df[(dates >= split-pd.Timedelta(days=7)) & (dates < split+pd.Timedelta(days=1))].copy()
+                window['observed_date'] = dates.loc[window.index]
+                dimensions = [c for c in window.select_dtypes(include=['object','category','string'])
+                              if c != date_col and ContributionAnalyzer.is_valid_business_dimension(c)
+                              and 1 < window[c].nunique() <= 30]
+                if dimensions:
+                    dim = dimensions[0]
+                    try:
+                        result = AnalystService(window).investigate(kpi_key,'observed_date',dim,split.isoformat())
+                        for item in result['rows']:
+                            pct = item['share_of_net_change_pct']
+                            if pct is None: continue
+                            contributions.append({'dimension_name':dim,'dimension_value':item['segment'],
+                                'contribution_percentage':pct,'confidence_score':None,
+                                'explanation_text':f"{item['segment']}: mean daily {kpi_name} changed by {item['change']:.4g}, comparing the detection day with observed days in the preceding week. This is a segment contribution, not proof of cause."})
+                    except (ValueError,TypeError,KeyError):
+                        pass
 
         # Clean existing root cause results for this detection
         self.db.query(RootCauseResult).filter(
@@ -117,12 +72,12 @@ class RootCauseService:
                 dimension_value=str(c["dimension_value"]),
                 contribution_percentage=float(c["contribution_percentage"]) if c["contribution_percentage"] is not None else 0.0,
                 explanation_text=str(c["explanation_text"]),
-                confidence_score=float(c.get("confidence_score", 0.85)) if c.get("confidence_score") is not None else 0.85
+                confidence_score=None
             )
             self.db.add(rc)
             persisted.append(rc)
 
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
 
         return persisted
 

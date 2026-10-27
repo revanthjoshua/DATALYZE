@@ -38,33 +38,41 @@ def get_admin_auth(client: TestClient, email: str = "stabilization_admin@datalyz
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_cors_vercel_origin_regex(client: TestClient):
-    """Verifies that Vercel production and preview domains pass CORS preflight OPTIONS."""
+def test_cors_explicitly_configured_origin(client: TestClient):
+    """Only an exact, explicitly configured origin receives credentialed access."""
+    origin = "http://localhost:5173"
+    assert origin in settings.CORS_ORIGINS
     response = client.options(
         "/api/v1/auth/login",
         headers={
-            "Origin": "https://datalyze-y9n8.vercel.app",
+            "Origin": origin,
             "Access-Control-Request-Method": "POST",
             "Access-Control-Request-Headers": "content-type",
         },
     )
     assert response.status_code == 200
-    assert response.headers.get("access-control-allow-origin") == "https://datalyze-y9n8.vercel.app"
+    assert response.headers.get("access-control-allow-origin") == origin
     assert response.headers.get("access-control-allow-credentials") == "true"
 
 
-def test_cors_preview_vercel_domain(client: TestClient):
-    """Verifies that arbitrary Vercel preview URLs match allow_origin_regex."""
+@pytest.mark.parametrize("origin", [
+    "https://datalyze-preview-pr-12.vercel.app",
+    "https://datalyze-y9n8.vercel.app",
+    "http://localhost:5173.evil.example",
+])
+def test_cors_rejects_unconfigured_domain(client: TestClient, origin):
+    """Old production, preview and lookalike hosts have no implicit trust."""
+    assert origin not in settings.CORS_ORIGINS
     response = client.options(
         "/api/v1/auth/login",
         headers={
-            "Origin": "https://datalyze-preview-pr-12.vercel.app",
+            "Origin": origin,
             "Access-Control-Request-Method": "POST",
             "Access-Control-Request-Headers": "content-type",
         },
     )
-    assert response.status_code == 200
-    assert response.headers.get("access-control-allow-origin") == "https://datalyze-preview-pr-12.vercel.app"
+    assert response.status_code == 400
+    assert response.headers.get("access-control-allow-origin") is None
 
 
 def test_serverless_dataset_auto_hydration_for_noah_and_root_cause(
@@ -135,7 +143,10 @@ def test_serverless_dataset_auto_hydration_for_noah_and_root_cause(
 
     rc_service = RootCauseService(db_session, tenant_id=tenant_id)
     root_causes = rc_service.explain_detection(detection)
-    assert len(root_causes) > 0
+    # This event has no matching dated comparison period. The service must
+    # hydrate the source but must not invent causes for an unrelated date.
+    assert TenantDatasetStore.get_dataset(tenant_id) is not None
+    assert root_causes == []
 
 
 def test_report_csv_export_endpoints(client: TestClient):

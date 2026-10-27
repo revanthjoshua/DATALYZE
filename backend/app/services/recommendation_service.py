@@ -54,52 +54,14 @@ class RecommendationService:
             if existing:
                 continue
 
-            if det.direction == "down":
-                if "revenue" in (kpi.key if kpi else "") or "sales" in (kpi.key if kpi else ""):
-                    title = f"Investigate {abs(det.percentage_change):.1f}% Revenue Decline in {kpi_name}"
-                    action = (
-                        f"Review campaign spend, inventory availability, and regional fulfillment channels{top_dimension_info}. "
-                        f"Re-engage stalled customer segments with targeted retention incentives."
-                    )
-                    category = "marketing"
-                    impact = "high"
-                    priority = "urgent" if det.severity == "critical" else "standard"
-                elif "aov" in (kpi.key if kpi else ""):
-                    title = f"Introduce Product Bundling to Recover Average Order Value"
-                    action = f"Deploy checkout cross-sell recommendations on top-performing items{top_dimension_info} to elevate basket size."
-                    category = "pricing"
-                    impact = "medium"
-                    priority = "standard"
-                elif "churn" in (kpi.key if kpi else ""):
-                    title = f"Trigger Proactive Retention for At-Risk Customers"
-                    action = f"Deploy customer success intervention outreach for accounts showing declining usage{top_dimension_info}."
-                    category = "operations"
-                    impact = "high"
-                    priority = "urgent"
-                else:
-                    title = f"Address Negative Anomaly in {kpi_name}"
-                    action = f"Audit operational inputs and fulfillment metrics{top_dimension_info} to stabilize variance."
-                    category = "operations"
-                    impact = "medium"
-                    priority = "standard"
-            else:
-                title = f"Capitalize on {abs(det.percentage_change):.1f}% Surge in {kpi_name}"
-                action = (
-                    f"Increase stock allocation and marketing focus behind top contributors{top_dimension_info} "
-                    f"to sustain positive demand momentum."
-                )
-                category = "inventory" if "Retail" in industry else "marketing"
-                impact = "high"
-                priority = "standard"
-
-            # Plain-English business explanation
-            direction_word = "dropped" if det.direction == "down" else "surged"
-            driver_clause = f", most likely driven by '{top_driver_name}'" if top_driver_name else ""
-            rationale = (
-                f"This action was recommended because {kpi_name} {direction_word} "
-                f"{abs(det.percentage_change):.1f}% below its baseline "
-                f"(from {det.baseline_value:,.2f} to {det.current_value:,.2f}){driver_clause}."
-            )
+            title = f"Investigate {kpi_name}: {det.percentage_change:+.1f}% versus baseline"
+            action = (f"Check data completeness, then review the underlying records{top_dimension_info}. "
+                      "Assign an owner, state a testable explanation and measure the outcome before making operational changes.")
+            category = 'analysis'
+            impact = 'unestimated'
+            priority = 'urgent' if det.severity == 'critical' else 'standard'
+            rationale = (f"Observed {kpi_name}: {det.current_value:,.2f}; comparison baseline: {det.baseline_value:,.2f}. "
+                         "This is a rule-based investigation suggestion. Financial impact and causal explanation have not been established.")
 
             rec = Recommendation(
                 company_id=self.tenant_id,
@@ -116,37 +78,11 @@ class RecommendationService:
             self.db.add(rec)
             generated.append(rec)
 
-        # 2. If no anomaly detections exist yet, generate strategic prescriptions from active KPIs
-        if not generated and not self.rec_repo.get_active_recommendations():
-            active_kpis = self.kpi_repo.get_active_kpis()
-            for kpi in active_kpis[:3]:
-                history = self.kpi_repo.get_kpi_values(kpi.id, limit=30)
-                if not history:
-                    continue
-                val = history[-1].value if history else 0.0
-
-                rec = Recommendation(
-                    company_id=self.tenant_id,
-                    kpi_id=kpi.id,
-                    title=f"Optimize Baseline Performance for {kpi.name}",
-                    action_text=f"Review operational inputs and capacity planning to sustain positive {kpi.name} trajectory.",
-                    rationale=f"This action was recommended to optimize {kpi.name} (currently measuring {val:,.2f}) and strengthen operational margins.",
-                    impact_level="medium",
-                    priority="standard",
-                    category="operations",
-                    status="open"
-                )
-                self.db.add(rec)
-                generated.append(rec)
-
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         return generated
 
     def list_recommendations(self, limit: int = 50, open_only: bool = False) -> List[Recommendation]:
         recs = self.rec_repo.get_active_recommendations(limit=limit) if open_only else self.rec_repo.get_all(limit=limit)
-        if not recs:
-            self.generate_recommendations()
-            recs = self.rec_repo.get_active_recommendations(limit=limit) if open_only else self.rec_repo.get_all(limit=limit)
         return recs
 
     def update_status(self, recommendation_id: int, new_status: str) -> Recommendation:
@@ -154,6 +90,6 @@ class RecommendationService:
         if not rec:
             raise ResourceNotFoundException("Recommendation")
         rec.status = new_status
-        self.db.commit()
+        (self.db.flush() if self.db.info.get("dataset_transaction") else self.db.commit())
         self.db.refresh(rec)
         return rec

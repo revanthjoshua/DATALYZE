@@ -112,7 +112,7 @@ export const DetectionCard: React.FC<DetectionCardProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#6B4226] dark:text-[#D5B79F] uppercase tracking-wider font-mono">
               <Layers className="w-3.5 h-3.5" />
-              <span>Why this happened (Contributing Factors)</span>
+              <span>Where the change occurred</span>
             </div>
             <span className="text-[10px] text-neutral-400 font-mono">Calculated from Business Data</span>
           </div>

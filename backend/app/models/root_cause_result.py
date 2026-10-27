@@ -14,7 +14,7 @@ class RootCauseResult(Base):
     dimension_value = Column(String(255), nullable=False)  # e.g., "Region East", "Electronics"
     contribution_percentage = Column(Float, nullable=False)  # e.g., 68.4
     explanation_text = Column(Text, nullable=False)  # e.g., "68% of the revenue drop came from Region East"
-    confidence_score = Column(Float, default=0.85)
+    confidence_score = Column(Float, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Relationships

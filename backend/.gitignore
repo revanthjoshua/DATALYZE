@@ -8,13 +8,19 @@ venv/
 .venv/
 ENV/
 *.db
+*.db-*
+*.sqlite
+*.sqlite-*
 *.sqlite3
+*.sqlite3-*
 test_datalyze.db
 datalyze.db
 test_e2e_*.db
 .pytest_cache/
 *.log
 .env
+.env.*
+!.env.example
 
 # Runtime tenant datasets & storage
 storage/tenants/

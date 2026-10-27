@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, AuthResponse } from '../types/user.types';
 import { authApi } from '../api/authApi';
+import { isCurrentSessionToken } from '../utils/authRedirect';
 
 interface AuthContextType {
   user: User | null;
@@ -47,7 +48,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // background so a serverless cold start cannot freeze the whole app.
           setLoading(false);
           const data = await authApi.getMe();
-          if (data && data.user) {
+          if (data && data.user && isCurrentSessionToken(savedToken, localStorage.getItem('datalyze_token'))) {
             setUser(data.user);
             localStorage.setItem('datalyze_user', JSON.stringify(data.user));
             if (data.company) {
@@ -55,7 +56,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
         } catch (err: any) {
-          if (err.response && err.response.status === 401) {
+          const currentToken = localStorage.getItem('datalyze_token');
+          if (err.response && err.response.status === 401 &&
+              (!currentToken || isCurrentSessionToken(savedToken, currentToken))) {
             console.warn('Session expired. Logging out.');
             logout();
           }

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { loginReturnPath } from '../utils/authRedirect';
 import {
   ShieldCheck,
   UserCheck,
@@ -17,6 +18,8 @@ import { Button } from '../components/ui/Button';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = loginReturnPath(location.state?.returnTo, location.search);
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] dark:bg-[#0C0D10] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden font-sans text-neutral-900 dark:text-neutral-100">
@@ -25,7 +28,7 @@ export const LoginPage: React.FC = () => {
           D
         </div>
         <h2 className="text-3xl font-black tracking-tight text-neutral-900 dark:text-neutral-50">
-          DATALYZE Intelligence Portal
+          DATALYZE Analyst Workspace
         </h2>
         <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-md mx-auto leading-relaxed">
           Select your organization portal to authenticate with role-based workspace permissions.
@@ -66,7 +69,7 @@ export const LoginPage: React.FC = () => {
                 </li>
                 <li className="flex items-center space-x-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span>Executive dashboards & Noah AI</span>
+                  <span>Analyst workspace & dataset assistant</span>
                 </li>
               </ul>
             </div>
@@ -76,7 +79,7 @@ export const LoginPage: React.FC = () => {
                 variant="primary"
                 size="md"
                 className="w-full justify-center"
-                onClick={() => navigate('/login/admin')}
+                onClick={() => navigate('/login/admin', {state: {returnTo}})}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
                 Sign In as Admin
@@ -101,22 +104,22 @@ export const LoginPage: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-                  Daily business metrics, operational alerts, actionable recommendations, inventory stock, and reports.
+                  Prepare and explore data, review metrics and findings, and share evidence and reports.
                 </p>
               </div>
 
               <ul className="space-y-2 text-xs text-neutral-600 dark:text-neutral-400 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                 <li className="flex items-center space-x-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span>Execute assigned recommendations</span>
+                  <span>Review recommendations & record progress</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span>Monitor anomaly alerts & stock</span>
+                  <span>Review detected anomalies & data quality</span>
                 </li>
                 <li className="flex items-center space-x-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span>View metrics & 7-day predictions</span>
+                  <span>View metrics & validated forecasts</span>
                 </li>
               </ul>
             </div>
@@ -126,7 +129,7 @@ export const LoginPage: React.FC = () => {
                 variant="primary"
                 size="md"
                 className="w-full justify-center bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700 text-white"
-                onClick={() => navigate('/login/employee')}
+                onClick={() => navigate('/login/employee', {state: {returnTo}})}
                 rightIcon={<ArrowRight className="w-4 h-4" />}
               >
                 Sign In as Employee

@@ -16,7 +16,7 @@ import { kpiApi } from '../api/kpiApi';
 import { KPISummaryCard } from '../types/kpi.types';
 import { KpiTrendChart } from '../components/kpi/KpiTrendChart';
 import { useTenant } from '../context/TenantContext';
-import { useToast } from '../context/ToastContext';
+import { useDateRange } from '../context/DateRangeContext';
 import { formatKPIValue, formatPercentage } from '../utils/formatters';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -24,8 +24,6 @@ import { Card } from '../components/ui/Card';
 import { PageHeader } from '../components/ui/PageHeader';
 import { StateView } from '../components/ui/StateView';
 import { DenseTable, ColumnDef } from '../components/ui/DenseTable';
-import { Modal } from '../components/ui/Modal';
-import { FormField, Input } from '../components/ui/FormField';
 
 interface DimensionSlice {
   dimension_value: string;
@@ -37,9 +35,9 @@ export const KpiDetailPage: React.FC = () => {
   const params = useParams<{ kpiId?: string; id?: string }>();
   const navigate = useNavigate();
   const { company } = useTenant();
-  const toast = useToast();
+  const { timeRange } = useDateRange();
 
-  const rawParam = (params.kpiId || params.id || '1').trim();
+  const rawParam = (params.kpiId || params.id || '').trim();
   const kpiId = parseInt(rawParam, 10);
 
   const [kpi, setKpi] = useState<KPISummaryCard | null>(null);
@@ -47,16 +45,12 @@ export const KpiDetailPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Target Baseline Modal
-  const [isTargetModalOpen, setIsTargetModalOpen] = useState(false);
-  const [targetValue, setTargetValue] = useState<string>('');
-  const [targetLoading, setTargetLoading] = useState(false);
-
   const fetchDetail = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const allKpis = await kpiApi.getDashboardSummary();
+      setKpi(null);
+      const allKpis = await kpiApi.getDashboardSummary(timeRange);
 
       const normalizedParam = rawParam.toLowerCase();
       let current =
@@ -71,48 +65,8 @@ export const KpiDetailPage: React.FC = () => {
               (k.key || '').toLowerCase() === normalizedParam ||
               (k.name || '').toLowerCase() === normalizedParam ||
               (k.name || '').toLowerCase().replace(/\s+/g, '_') === normalizedParam ||
-              (k.name || '').toLowerCase().replace(/\s+/g, '-') === normalizedParam ||
-              normalizedParam.includes((k.key || '').toLowerCase()) ||
-              (k.key || '').toLowerCase().includes(normalizedParam)
+              (k.name || '').toLowerCase().replace(/\s+/g, '-') === normalizedParam
           ) || null;
-      }
-
-      if (!current && !isNaN(kpiId) && kpiId > 0) {
-        try {
-          const kpiDef = await kpiApi.getKPIDetail(kpiId);
-          const history = await kpiApi.getKPIValues(kpiId, { limit: 90 });
-          current = {
-            id: kpiDef.id,
-            key: kpiDef.key,
-            name: kpiDef.name,
-            description: kpiDef.description,
-            category: kpiDef.category,
-            unit: kpiDef.unit,
-            direction: kpiDef.direction,
-            calculation_cadence: kpiDef.calculation_cadence,
-            current_value: history.length > 0 ? history[history.length - 1].value : 0,
-            previous_value: history.length > 1 ? history[history.length - 2].value : undefined,
-            percentage_change:
-              history.length > 1 && history[history.length - 2].value !== 0
-                ? ((history[history.length - 1].value - history[history.length - 2].value) /
-                    history[history.length - 2].value) *
-                  100
-                : 0,
-            trend_direction:
-              history.length > 1 &&
-              history[history.length - 1].value >= history[history.length - 2].value
-                ? 'up'
-                : 'down',
-            status: 'healthy',
-            recent_history: history,
-          };
-        } catch (e) {
-          console.warn('Direct KPI fetch fallback error', e);
-        }
-      }
-
-      if (!current && allKpis.length > 0) {
-        current = allKpis[0];
       }
 
       if (!current) {
@@ -130,13 +84,13 @@ export const KpiDetailPage: React.FC = () => {
 
   useEffect(() => {
     fetchDetail();
-  }, [rawParam]);
+  }, [rawParam, timeRange]);
 
   const currency = company?.currency || 'USD';
 
   // Discover all dimensions recorded in history
   const availableDimensions = React.useMemo(() => {
-    if (!kpi || !kpi.recent_history) return ['region', 'category', 'channel'];
+    if (!kpi || !kpi.recent_history) return [];
     const dims = new Set<string>();
     kpi.recent_history.forEach((h) => {
       if (h.dimension_data && typeof h.dimension_data === 'object') {
@@ -147,7 +101,7 @@ export const KpiDetailPage: React.FC = () => {
         });
       }
     });
-    return dims.size > 0 ? Array.from(dims) : ['region', 'category', 'channel'];
+    return Array.from(dims);
   }, [kpi]);
 
   useEffect(() => {
@@ -194,27 +148,6 @@ export const KpiDetailPage: React.FC = () => {
       }))
       .sort((a, b) => b.total_value - a.total_value);
   }, [kpi, selectedDim]);
-
-  const handleSaveTarget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!targetValue || !kpi) return;
-
-    setTargetLoading(true);
-    try {
-      await kpiApi.updateKPI(kpi.id, {
-        description: kpi.description
-          ? `${kpi.description} (Target: ${targetValue})`
-          : `Target: ${targetValue}`,
-      });
-      toast.success(`Target threshold of ${targetValue} saved for "${kpi.name}".`, 'Target Updated');
-      setIsTargetModalOpen(false);
-      await fetchDetail();
-    } catch {
-      toast.error('Failed to update target threshold.', 'Update Error');
-    } finally {
-      setTargetLoading(false);
-    }
-  };
 
   const dimColumns: ColumnDef<DimensionSlice>[] = [
     {
@@ -263,7 +196,7 @@ export const KpiDetailPage: React.FC = () => {
   ];
 
   const dynamicEyebrow = kpi
-    ? `${kpi.category || 'Business Metric'} • ${kpi.status.toUpperCase()} (${kpi.direction === 'increase_is_good' ? 'Higher is better' : 'Lower is better'})`
+    ? `${kpi.category || 'Business Metric'} • ${kpi.percentage_change == null ? 'NO COMPARISON' : kpi.status.toUpperCase()} (${kpi.direction === 'increase_is_good' ? 'Higher is better' : 'Lower is better'})`
     : 'Metric Detail Drilldown';
 
   return (
@@ -273,7 +206,7 @@ export const KpiDetailPage: React.FC = () => {
         stage={dynamicEyebrow}
         stageIcon={<TrendingUp className="w-4 h-4 text-[#6B4226] dark:text-[#D5B79F]" />}
         title={kpi?.name || 'KPI Metric Deep Dive'}
-        description={kpi?.description || 'Historical continuous telemetry, dimension slices, and target bounds'}
+        description={kpi?.description || 'Recorded observations and dimension breakdowns for the selected period'}
         actions={
           <div className="flex items-center space-x-2 flex-wrap gap-y-1">
             <Button
@@ -294,10 +227,10 @@ export const KpiDetailPage: React.FC = () => {
             <Button
               variant="primary"
               size="sm"
-              onClick={() => setIsTargetModalOpen(true)}
+              onClick={() => navigate('/analysis')}
               leftIcon={<Target className="w-3.5 h-3.5" />}
             >
-              Set Target Baseline
+              Analysis Objectives
             </Button>
           </div>
         }
@@ -334,7 +267,7 @@ export const KpiDetailPage: React.FC = () => {
               <Card className="p-5 flex flex-col justify-between border-l-4 border-l-blue-500">
                 <div>
                   <span className="text-[10px] font-bold text-neutral-500 font-mono block uppercase">
-                    Variance vs Baseline
+                    Change vs Previous Observation
                   </span>
                   <p className="text-2xl sm:text-3xl font-extrabold font-mono mt-1">
                     {kpi.percentage_change !== null && kpi.percentage_change !== undefined ? (
@@ -355,53 +288,53 @@ export const KpiDetailPage: React.FC = () => {
                 </div>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-2 font-sans">
                   {kpi.previous_value !== undefined && kpi.previous_value !== null
-                    ? `Baseline: ${formatKPIValue(kpi.previous_value, kpi.unit, currency)}`
-                    : 'Target Goal: ' + (kpi.direction === 'increase_is_good' ? 'Higher is better' : 'Lower is better')}
+                    ? `Previous: ${formatKPIValue(kpi.previous_value, kpi.unit, currency)}`
+                    : 'No comparable previous observation'}
                 </p>
               </Card>
 
               <Card className="p-5 flex flex-col justify-between border-l-4 border-l-amber-500">
                 <div>
                   <span className="text-[10px] font-bold text-neutral-500 font-mono block uppercase">
-                    Health Status Rating
+                    Change Indicator
                   </span>
                   <div className="mt-2">
-                    {kpi.status === 'healthy' && (
+                    {kpi.percentage_change == null ? <span className="text-sm text-neutral-500">No comparison available</span> : kpi.status === 'healthy' && (
                       <span className="badge-healthy px-2.5 py-1 text-xs inline-flex items-center">
                         <CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                        HEALTHY NOMINAL
+                        FAVORABLE CHANGE
                       </span>
                     )}
                     {kpi.status === 'warning' && (
                       <span className="badge-warning px-2.5 py-1 text-xs inline-flex items-center">
                         <AlertTriangle className="w-3.5 h-3.5 mr-1 text-amber-600" />
-                        WARNING STATE
+                        ADVERSE CHANGE
                       </span>
                     )}
                     {kpi.status === 'critical' && (
                       <span className="badge-critical px-2.5 py-1 text-xs inline-flex items-center animate-pulse">
                         <AlertCircle className="w-3.5 h-3.5 mr-1 text-red-600" />
-                        CRITICAL DIVERGENCE
+                        LARGE ADVERSE CHANGE
                       </span>
                     )}
                   </div>
                 </div>
                 <p className="text-[11px] text-neutral-400 mt-2 font-sans">
-                  Based on rolling 7-day z-scores
+                  Based on the last two dated observations and metric direction; adverse changes over 7% are flagged.
                 </p>
               </Card>
 
               <Card className="p-5 flex flex-col justify-between border-l-4 border-l-emerald-500">
                 <div>
                   <span className="text-[10px] font-bold text-neutral-500 font-mono block uppercase">
-                    Sampling Cadence
+                    Data Updates
                   </span>
                   <p className="text-2xl sm:text-3xl font-extrabold text-[#6B4226] dark:text-[#8C5E3C] font-mono mt-1">
-                    Continuous
+                    On Import
                   </p>
                 </div>
                 <p className="text-[11px] text-neutral-400 mt-2 font-sans">
-                  Auto-recomputed on dataset ingest
+                  Recomputed when your dataset changes
                 </p>
               </Card>
             </div>
@@ -446,7 +379,7 @@ export const KpiDetailPage: React.FC = () => {
 
               {breakdown.length === 0 ? (
                 <Card className="p-8 text-center text-xs text-neutral-500">
-                  No dimensional breakdown available for dimension "{selectedDim}".
+                  No recorded values are available for this dimension.
                 </Card>
               ) : (
                 <DenseTable
@@ -462,51 +395,6 @@ export const KpiDetailPage: React.FC = () => {
         )}
       </StateView>
 
-      {/* Target Baseline Modal */}
-      <Modal
-        isOpen={isTargetModalOpen}
-        onClose={() => setIsTargetModalOpen(false)}
-        title={`Set Target Baseline: ${kpi?.name}`}
-        description="Configure target threshold used for performance alerts and health ratings."
-        icon={<Target className="w-5 h-5" />}
-      >
-        <form onSubmit={handleSaveTarget} className="space-y-4">
-          <FormField
-            label={`Target Value (${kpi?.unit === 'currency' ? currency : kpi?.unit || 'value'})`}
-            required
-            helperText="Threshold baseline to maintain"
-          >
-            <Input
-              type="number"
-              step="any"
-              required
-              value={targetValue}
-              onChange={(e) => setTargetValue(e.target.value)}
-              placeholder="e.g. 50000"
-            />
-          </FormField>
-
-          <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setIsTargetModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              size="sm"
-              isLoading={targetLoading}
-              leftIcon={<Sparkles className="w-3.5 h-3.5" />}
-            >
-              Save Target
-            </Button>
-          </div>
-        </form>
-      </Modal>
     </div>
   );
 };

@@ -39,14 +39,13 @@ export const NoahChatWidget: React.FC<NoahChatWidgetProps> = ({
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: 'noah',
-      text: `Hello! I am Noah, your business intelligence and web knowledge copilot for ${company?.name || 'your business'}. Ask me any question in plain language about your uploaded numbers, tracked metrics, anomaly alerts, 7-day predictions, recommended actions, or modern web technologies.`,
+      text: `I am Noah, the dataset assistant for ${company?.name || 'your workspace'}. I use predefined analysis rules to summarize uploaded data, saved metrics, alerts, and forecasts. I do not browse the web or establish causes. Review the referenced evidence before making decisions.`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       suggestedActions: [
         'How is our business tracking overall?',
         'What are the key insights from my uploaded data?',
         'Show 7-day predictions',
         'What actions should we take today?',
-        'What is an API?',
       ],
     },
   ]);
@@ -66,7 +65,7 @@ export const NoahChatWidget: React.FC<NoahChatWidgetProps> = ({
 
   const handleSend = async (queryText?: string) => {
     const textToSend = queryText || input;
-    if (!textToSend.trim()) return;
+    if (!textToSend.trim() || loading) return;
 
     const userMsg: Message = {
       sender: 'user',
@@ -124,14 +123,14 @@ export const NoahChatWidget: React.FC<NoahChatWidgetProps> = ({
             <div className="min-w-0">
               <div className="flex items-center space-x-2">
                 <h3 className="font-bold text-neutral-900 dark:text-neutral-100 text-sm sm:text-base tracking-tight truncate">
-                  Noah AI Companion
+                  Noah Dataset Assistant
                 </h3>
                 <span className="text-[10px] px-2 py-0.2 rounded-full bg-[#F4ECE4] dark:bg-[#271910] text-[#6B4226] dark:text-[#D5B79F] font-semibold border border-[#E8D6C7] dark:border-[#55331C] shrink-0">
-                  Decision Intelligence
+                  Rule based
                 </span>
               </div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-normal truncate">
-                Intelligence copilot for {company?.name || 'Workspace'}
+                Saved data summaries for {company?.name || 'Workspace'}
               </p>
             </div>
           </div>
@@ -218,6 +217,7 @@ export const NoahChatWidget: React.FC<NoahChatWidgetProps> = ({
                       <button
                         key={aIdx}
                         onClick={() => handleSend(action)}
+                        disabled={loading}
                         className="text-left text-[11px] px-2.5 py-1 rounded-full bg-white dark:bg-[#15171C] text-[#6B4226] dark:text-[#D5B79F] border border-neutral-200 dark:border-neutral-800 hover:border-[#6B4226]/50 hover:bg-[#F4ECE4]/30 dark:hover:bg-[#271910]/40 transition-colors shadow-2xs cursor-pointer font-medium"
                       >
                         {action} →
@@ -247,7 +247,7 @@ export const NoahChatWidget: React.FC<NoahChatWidgetProps> = ({
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Ask Noah about your data, metrics, predictions, or web tech..."
+                placeholder="Ask about uploaded data, metrics, alerts, or forecasts…"
                 className="flex-1 px-3.5 py-2 text-xs sm:text-sm font-medium bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#6B4226] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400"
               />
               <button

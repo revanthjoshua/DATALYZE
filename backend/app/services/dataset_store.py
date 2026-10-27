@@ -19,7 +19,8 @@ class TenantDatasetStore:
         tenant_id: int,
         df: pd.DataFrame,
         source_filename: str = "dataset.csv",
-        detected_profile: Optional[Dict[str, Any]] = None
+        detected_profile: Optional[Dict[str, Any]] = None,
+        revision: Optional[str] = None
     ) -> None:
         clean_df = df.copy()
 
@@ -44,6 +45,7 @@ class TenantDatasetStore:
         # Completely replace the tenant store with fresh dataset state
         cls._store[tenant_id] = {
             "df": clean_df,
+            "revision": revision,
             "filename": source_filename,
             "ingested_at": datetime.now(timezone.utc),
             "row_count": len(clean_df),
@@ -85,6 +87,7 @@ class TenantDatasetStore:
         if not tenant_data:
             return None
         return {
+            "revision": tenant_data.get("revision"),
             "filename": tenant_data.get("filename"),
             "ingested_at": tenant_data.get("ingested_at").isoformat() if tenant_data.get("ingested_at") else None,
             "row_count": tenant_data.get("row_count", 0),
