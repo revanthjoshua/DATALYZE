@@ -17,6 +17,8 @@ def daily_cron(request: Request):
     supplied = request.headers.get('authorization', '')
     if not secrets.compare_digest(supplied.encode('utf-8'), f'Bearer {secret}'.encode('utf-8')):
         raise HTTPException(401, 'Scheduler authorization required.')
+    if __import__('os').environ.get('VERCEL_ENV', '').strip().lower() == 'preview':
+        raise HTTPException(503, 'Scheduled execution is unavailable on Vercel Preview deployments.')
     deadline = time.monotonic() + 240
     checked = run_cycle(deadline=deadline, max_sources=2, max_tenants=10, max_notifications=5)
     return JSONResponse({'checked_companies': checked, 'bounded_run': True,
