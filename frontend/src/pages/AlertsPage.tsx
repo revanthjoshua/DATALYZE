@@ -54,9 +54,13 @@ export const AlertsPage: React.FC = () => {
     setRefreshing(true);
     try {
       toast.info('Running z-score statistical anomaly detection...', 'Analysis Pipeline');
-      const data = await detectionApi.runDetectionPipeline();
-      setDetections(Array.isArray(data) ? data : []);
-      toast.success(`Pipeline executed. Found ${data?.length || 0} total detections.`, 'Detection Complete');
+      const newDetections = await detectionApi.runDetectionPipeline();
+      const savedDetections = await detectionApi.getDetections();
+      setDetections(Array.isArray(savedDetections) ? savedDetections : []);
+      toast.success(
+        `Scan complete. ${newDetections?.length || 0} new detections; ${savedDetections?.length || 0} recorded alerts shown.`,
+        'Detection Complete'
+      );
     } catch (err) {
       toast.error('Failed to run anomaly detection pipeline.', 'Pipeline Error');
     } finally {
