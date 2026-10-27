@@ -80,6 +80,8 @@ def configure_schedule(db, tenant, source_id, enabled, interval, expected_revisi
     config = next((s for s in configured_sources(tenant) if s.get('id') == source_id), None)
     if config is None:
         raise HTTPException(404, 'Source not configured for this company.')
+    if enabled and os.environ.get('VERCEL_ENV', '').strip().lower() == 'preview':
+        raise HTTPException(422, 'Automatic refresh cannot be scheduled on a Vercel Preview deployment. Vercel Cron runs on Production.')
     if enabled and settings.DATALYZE_SCHEDULER_MODE == 'vercel_daily' and interval < 86400:
         raise HTTPException(422, 'This deployment checks sources once daily. Choose a 1,440-minute interval.')
     if enabled and config.get('allow_refresh') is not True:
